@@ -11,13 +11,13 @@
 #include <vector>
 
 struct NODE{
-        double pos_val[2];
-        bool direction;
-        NODE* small_link;
-        NODE* big_link;
-        NODE* parent;
-        int layer;
-    };
+    double pos_val[2];
+    bool dimension;
+    NODE* small_link;
+    NODE* big_link;
+    NODE* parent;
+    int layer;
+};
 
 struct POINT{
     double x;
@@ -25,13 +25,48 @@ struct POINT{
 };
 
 class Set{
-    
+
+    public:
+        int data_size;
+        int max_layer = 0;
+        double* x_vals;
+        double* y_vals;
+        double** axes_ptr[2] = {&x_vals, &y_vals};
+
+        Set* copy_set(){
+            Set* new_set = new Set(data_size, x_vals, y_vals);
+            return new_set;
+        }
+
+        void print_data(){
+            for (int i = 0; i < data_size; i++){
+                std::cout << *(*axes_ptr[0]+i) << ", " << *(*axes_ptr[1]+i) << '\n';
+            }
+        }
+
+    Set(int data_size, double* x_vals, double* y_vals){
+        //Constructor
+        this->data_size = data_size;
+        this->x_vals = new double[data_size];
+        this->y_vals = new double[data_size];
+
+        for (int i = 0; i < data_size; i++){
+            this->x_vals[i] = x_vals[i];
+            this->y_vals[i] = y_vals[i];
+        }
+    }
+    ~Set(){
+        //Deconstructor
+    }
+};
+
+class KdTree{
     NODE* kd_node_array;
     int node_index = 0;
 
-    void populate_node(bool direction, int start, int points_left, NODE* this_node, NODE* starting_node){
+    void populate_node(bool dimension, int start, int points_left, NODE* this_node, NODE* starting_node){
         int index = start + std::ceil(points_left/2.0)- 1;
-        this_node->direction = direction;
+        this_node->dimension = dimension;
         this_node->pos_val[0] = x_vals[index];
         this_node->pos_val[1] = y_vals[index];
         this_node->parent = starting_node;
@@ -39,7 +74,7 @@ class Set{
         if (starting_node != NULL){
             this_node->layer = starting_node->layer + 1;
             //Node linking, not needed for the first node (has a NULL starting_node)
-            if (this_node->pos_val[!direction] < starting_node->pos_val[!direction]){
+            if (this_node->pos_val[!dimension] < starting_node->pos_val[!dimension]){
                 starting_node->small_link = this_node;
             }
             else{
@@ -57,11 +92,7 @@ class Set{
         double* x_vals;
         double* y_vals;
         double** axes_ptr[2] = {&x_vals, &y_vals};
-
-        Set* copy_set(){
-            Set* new_set = new Set(data_size, x_vals, y_vals);
-            return new_set;
-        }
+        bool first_dimension = false;
 
         void print_kd_tree(){
             for (int i = 0; i < data_size; i++) {
@@ -78,24 +109,24 @@ class Set{
             std::cout << max_layer << '\n';
         }
 
-        NODE* find_approximate_closest_point(double* target_point, bool direction){
+        NODE* find_approximate_closest_point(double* target_point, bool dimension){
             NODE* node_ptr = NULL;
             NODE* next_node_ptr = &kd_node_array[0];
 
             while (next_node_ptr != NULL){
                 node_ptr = next_node_ptr;
-                if (target_point[0] < node_ptr->pos_val[direction]){
+                if (target_point[0] < node_ptr->pos_val[dimension]){
                     next_node_ptr = node_ptr->small_link;
                 }
                 else{
                     next_node_ptr = node_ptr->big_link;
                 }
-                direction = !direction;
+                dimension = !dimension;
             }
             return node_ptr;
         }
 
-        NODE** find_closest_point(double* target_point, bool direction, bool find_second_closest){
+        NODE** find_closest_point(double* target_point, bool dimension, bool find_second_closest){
             NODE** possible_node_ptr = new NODE*[(max_layer * (max_layer + 1))/2];
             NODE** best_node_ptr = new NODE*[2];
             best_node_ptr[0] = NULL;
@@ -125,8 +156,8 @@ class Set{
                         second_closest_distance = distance;
                     }
 
-                    direction = node_ptr->direction;
-                    border_distance = target_point[direction] - node_ptr->pos_val[direction];
+                    dimension = node_ptr->dimension;
+                    border_distance = target_point[dimension] - node_ptr->pos_val[dimension];
                     //If the distance to the node is larger than the distance to the border,
                     //there might be a closer point on the other side.
                     if (border_distance < 0){
@@ -170,10 +201,10 @@ class Set{
             
         }
 
-        void make_kd_tree(bool direction, int start, int points_left, NODE* starting_node){
+        void make_kd_tree(bool dimension, int start, int points_left, NODE* starting_node){
             for (int i = start; i < (points_left + start); i++){
                 for (int j = i; j < (points_left + start); j++){
-                    if (*(*axes_ptr[direction] + i) > *(*axes_ptr[direction] + j)){
+                    if (*(*axes_ptr[dimension] + i) > *(*axes_ptr[dimension] + j)){
                         double temp_x = x_vals[i];
                         double temp_y = y_vals[i];
                         x_vals[i] = x_vals[j];
@@ -183,7 +214,7 @@ class Set{
                     }
                 }
             }
-            populate_node(direction, start, points_left, &kd_node_array[node_index], starting_node);
+            populate_node(dimension, start, points_left, &kd_node_array[node_index], starting_node);
             NODE* node = &kd_node_array[node_index];
             if (node->layer > max_layer){
                 max_layer = node->layer;
@@ -196,40 +227,32 @@ class Set{
                 return;
             }
             else if (points_left <= 2) {
-                make_kd_tree(!direction, start + 1, 1, node);
+                make_kd_tree(!dimension, start + 1, 1, node);
             }
             else{
-                make_kd_tree(!direction, start, std::ceil(points_left/2.0 - 1), node);
-                make_kd_tree(!direction, start + std::ceil(points_left/2.0), std::floor(points_left/2.0), node);
+                make_kd_tree(!dimension, start, std::ceil(points_left/2.0 - 1), node);
+                make_kd_tree(!dimension, start + std::ceil(points_left/2.0), std::floor(points_left/2.0), node);
                 return;
             }
         }
 
-        void print_data(){
-            for (int i = 0; i < data_size; i++){
-                std::cout << *(*axes_ptr[0]+i) << ", " << *(*axes_ptr[1]+i) << '\n';
-            }
-        }
-
-    Set(int data_size, double* x_vals, double* y_vals){
+    KdTree(Set parent_set, bool first_dimension){
         //Constructor
-        //Careful! This redirects the object's pointers to the data provided but does not make a copy!
-        //         Do not be surprised if multiple sets referencing the same data get transformed 
-        //         together!
-        this->data_size = data_size;
-        this->x_vals = new double[data_size];
-        this->y_vals = new double[data_size];
+        this->x_vals = parent_set.x_vals;
+        this->y_vals = parent_set.y_vals;
+        this->data_size = parent_set.data_size;
+        this->first_dimension = first_dimension;
+
         this->kd_node_array = new NODE[data_size];
-        for (int i = 0; i < data_size; i++){
-            this->x_vals[i] = x_vals[i];
-            this->y_vals[i] = y_vals[i];
-        }
+
+        //Calls a recursive function to make create the object and all its properties
+        make_kd_tree(false, 0, data_size, NULL);
     }
-    ~Set(){
-        //Deconstructor
-        //delete [] kd_node_array;
+    ~KdTree(){
+        //Destructor
     }
 };
+
 class Transform{
     public:
         double rot_mat[4];
@@ -448,8 +471,8 @@ int main(){
 
 
     Plot2D plot(false);
-    
-    model_set.make_kd_tree(false, 0, data_size, NULL);
+
+    KdTree model_tree(model_set, false);
 
     Transform guess_transform(0, 0, 0);
 
@@ -474,7 +497,7 @@ int main(){
             current_point.pos_val[0] = transformed_set.x_vals[i];
             current_point.pos_val[1] = transformed_set.y_vals[i];
             //Doing some weird pointer thing. Looks like this is working.
-            model_temp = model_set.find_closest_point(current_point_arr, false, true);
+            model_temp = model_tree.find_closest_point(current_point_arr, false, true);
             model_corr_1[i] = model_temp[0]; //mi1
             model_corr_2[i] = model_temp[1]; //mi2
 
