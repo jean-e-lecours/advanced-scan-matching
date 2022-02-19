@@ -1,27 +1,32 @@
 #include <cmath>
-#include <cstdio>
-#include <cstdlib>
 #include <iostream>
-#include <iomanip>
 #include <fstream>
 #include <gnuplot.h>
 #include <math.h>
 #include <string>
-#include <sys/types.h>
 #include <vector>
 
-struct NODE{
-    double pos_val[2];
-    bool dimension;
-    NODE* small_link;
-    NODE* big_link;
-    NODE* parent;
-    int layer;
+int dimensions;
+
+class Point{
+    public:
+        double* val;
+
+        explicit Point(int dims){
+            this->val = new double[dims];
+        }
+        explicit Point(){
+            this->val = new double[dimensions];
+        }
 };
 
-struct POINT{
-    double x;
-    double y;
+class Node: public Point{
+    public:
+        int dim;
+        int layer;
+        Node* small_link;
+        Node* big_link;
+        Node* parent;
 };
 
 class Set{
@@ -29,30 +34,47 @@ class Set{
     public:
         int data_size;
         int max_layer = 0;
-        double* x_vals;
-        double* y_vals;
-        double** axes_ptr[2] = {&x_vals, &y_vals};
+        Point* points;
 
         Set* copy_set(){
-            Set* new_set = new Set(data_size, x_vals, y_vals);
+            Set* new_set = new Set(data_size, points);
             return new_set;
         }
 
         void print_data(){
             for (int i = 0; i < data_size; i++){
-                std::cout << *(*axes_ptr[0]+i) << ", " << *(*axes_ptr[1]+i) << '\n';
+                for (int d = 0; d < dimensions; d++){
+                    std::cout << points[i].val[d];
+                    if (d+1 == dimensions){
+                        std::cout << '\n';
+                    }
+                    else{
+                        std::cout << ", ";
+                    }
+                }
             }
         }
 
-    Set(int data_size, double* x_vals, double* y_vals){
+    Set(int data_size, double** point_vals){
         //Constructor
         this->data_size = data_size;
-        this->x_vals = new double[data_size];
-        this->y_vals = new double[data_size];
+        this->points = new Point[data_size];
 
         for (int i = 0; i < data_size; i++){
-            this->x_vals[i] = x_vals[i];
-            this->y_vals[i] = y_vals[i];
+            for (int d = 0; d < dimensions; d++){
+                this->points[i].val[d] = point_vals[d][i];
+            }
+        }
+    }
+    Set(int data_size, Point* points){
+        //Constuctor for copy only
+        this->data_size = data_size;
+        this->points = new Point[data_size];
+
+        for (int i = 0; i < data_size; i++){
+            for (int d = 0; d < dimensions; d++){
+                this->points[i].val[d] = points[i].val[d];
+            }
         }
     }
     ~Set(){
@@ -61,20 +83,23 @@ class Set{
 };
 
 class KdTree{
-    NODE* kd_node_array;
+    Node* kd_node_array;
     int node_index = 0;
+    int dims;
 
-    void populate_node(bool dimension, int start, int points_left, NODE* this_node, NODE* starting_node){
+    void populate_node(int dim, int start, int points_left, Node* this_node, Node* starting_node){
         int index = start + std::ceil(points_left/2.0)- 1;
-        this_node->dimension = dimension;
-        this_node->pos_val[0] = x_vals[index];
-        this_node->pos_val[1] = y_vals[index];
+        this_node->dim = dim;
+        for (int d = 0; d < dimensions; d++){
+            this_node->val[d] = points[index].val[d];
+        }
         this_node->parent = starting_node;
         bool size = false;
         if (starting_node != NULL){
             this_node->layer = starting_node->layer + 1;
             //Node linking, not needed for the first node (has a NULL starting_node)
-            if (this_node->pos_val[!dimension] < starting_node->pos_val[!dimension]){
+            dim = cycle_dimensions(dim, false);
+            if (this_node->val[dim] < starting_node->val[dim]){
                 starting_node->small_link = this_node;
             }
             else{
@@ -86,53 +111,66 @@ class KdTree{
         }
     }
 
+    int cycle_dimensions(int dim, bool dir){
+        if (dir){
+            dim++;
+            if (dim >= dimensions){
+                dim = 0;
+            }
+        }
+        else{
+            dim--;
+            if (dim < 0){
+                dim = dimensions - 1;
+            }
+        }
+        return dim;
+    }
+
     public:
         int data_size;
         int max_layer = 0;
-        double* x_vals;
-        double* y_vals;
-        double** axes_ptr[2] = {&x_vals, &y_vals};
-        bool first_dimension = false;
+        Point* points;
+        int dim = 0;
 
         void print_kd_tree(){
             for (int i = 0; i < data_size; i++) {
-                std::cout << kd_node_array[i].pos_val[0] << ", " << kd_node_array[i].pos_val[1];
+                std::cout << kd_node_array[i].val[0] << ", " << kd_node_array[i].val[1];
                 std::cout << "[Layer " << kd_node_array[i].layer << "] ";
                 if (kd_node_array[i].big_link != NULL){
-                    std::cout << " =+=> " << kd_node_array[i].big_link->pos_val[0] << ", " << kd_node_array[i].big_link->pos_val[1];
+                    std::cout << " =+=> " << kd_node_array[i].big_link->val[0] << ", " << kd_node_array[i].big_link->val[1];
                 }
                 if (kd_node_array[i].small_link != NULL){
-                    std::cout << " =-=> " << kd_node_array[i].small_link->pos_val[0] << ", " << kd_node_array[i].small_link->pos_val[1];
+                    std::cout << " =-=> " << kd_node_array[i].small_link->val[0] << ", " << kd_node_array[i].small_link->val[1];
                 }
                 std::cout << '\n';
             }
-            std::cout << max_layer << '\n';
         }
 
-        NODE* find_approximate_closest_point(double* target_point, bool dimension){
-            NODE* node_ptr = NULL;
-            NODE* next_node_ptr = &kd_node_array[0];
+        Node* find_approximate_closest_point(double* target_point, int dim){
+            Node* node_ptr = NULL;
+            Node* next_node_ptr = &kd_node_array[0];
 
             while (next_node_ptr != NULL){
                 node_ptr = next_node_ptr;
-                if (target_point[0] < node_ptr->pos_val[dimension]){
+                if (target_point[0] < node_ptr->val[dim]){
                     next_node_ptr = node_ptr->small_link;
                 }
                 else{
                     next_node_ptr = node_ptr->big_link;
                 }
-                dimension = !dimension;
+                dim = cycle_dimensions(dim, true);
             }
             return node_ptr;
         }
 
-        NODE** find_closest_point(double* target_point, bool dimension, bool find_second_closest){
-            NODE** possible_node_ptr = new NODE*[(max_layer * (max_layer + 1))/2];
-            NODE** best_node_ptr = new NODE*[2];
+        Node** find_closest_point(Point* target_point, int dim, bool find_second_closest){
+            Node** possible_node_ptr = new Node*[(max_layer * (max_layer + 1))/2];
+            Node** best_node_ptr = new Node*[2];
             best_node_ptr[0] = NULL;
             best_node_ptr[1] = NULL;
             int possible_node_index = 0;
-            NODE* node_ptr = &kd_node_array[0];
+            Node* node_ptr = &kd_node_array[0];
             double distance = 0;
             double border_distance = 0;
             double closest_distance = INFINITY;
@@ -142,7 +180,7 @@ class KdTree{
                 while (node_ptr != NULL){
                     //We only go forwards and end when the pointer dies, unless there is
                     //another branch to inspect.
-                    distance = sqrt((target_point[0] - node_ptr->pos_val[0]) * (target_point[0] - node_ptr->pos_val[0]) + (target_point[1] - node_ptr->pos_val[1]) * (target_point[1] - node_ptr->pos_val[1]));
+                    distance = sqrt((target_point->val[0] - node_ptr->val[0]) * (target_point->val[0] - node_ptr->val[0]) + (target_point->val[1] - node_ptr->val[1]) * (target_point->val[1] - node_ptr->val[1]));
                     if (distance < closest_distance){
                         if (find_second_closest){
                             best_node_ptr[1] = best_node_ptr[0];
@@ -156,8 +194,8 @@ class KdTree{
                         second_closest_distance = distance;
                     }
 
-                    dimension = node_ptr->dimension;
-                    border_distance = target_point[dimension] - node_ptr->pos_val[dimension];
+                    dim = node_ptr->dim;
+                    border_distance = target_point->val[dim] - node_ptr->val[dim];
                     //If the distance to the node is larger than the distance to the border,
                     //there might be a closer point on the other side.
                     if (border_distance < 0){
@@ -193,6 +231,7 @@ class KdTree{
                 }
             }
             if (find_second_closest){
+
                 return best_node_ptr;
             }
             else{
@@ -201,25 +240,33 @@ class KdTree{
             
         }
 
-        void make_kd_tree(bool dimension, int start, int points_left, NODE* starting_node){
+        void make_kd_tree(int dim, int start, int points_left, Node* starting_node){
             for (int i = start; i < (points_left + start); i++){
+                
                 for (int j = i; j < (points_left + start); j++){
-                    if (*(*axes_ptr[dimension] + i) > *(*axes_ptr[dimension] + j)){
-                        double temp_x = x_vals[i];
-                        double temp_y = y_vals[i];
-                        x_vals[i] = x_vals[j];
-                        y_vals[i] = y_vals[j];
-                        x_vals[j] = temp_x;
-                        y_vals[j] = temp_y;
+                    if (points[i].val[dim] > points[j].val[dim]){
+                        double* temp = new double[dimensions];
+                        for (int d = 0; d < dimensions; d++){
+                            temp[d] = points[i].val[d];
+                        }
+                        for (int d = 0; d < dimensions; d++){
+                            points[i].val[d] = points[j].val[d];
+                        }
+                        for (int d = 0; d < dimensions; d++){
+                            points[j].val[d] = temp[d];
+                        }
                     }
                 }
             }
-            populate_node(dimension, start, points_left, &kd_node_array[node_index], starting_node);
-            NODE* node = &kd_node_array[node_index];
+            populate_node(dim, start, points_left, &kd_node_array[node_index], starting_node);
+            Node* node = &kd_node_array[node_index];
             if (node->layer > max_layer){
                 max_layer = node->layer;
             }
             node_index++;
+
+            
+
 
             if (points_left <= 1){
                 //If we hit a dead end we return and leave the links NULL
@@ -227,25 +274,34 @@ class KdTree{
                 return;
             }
             else if (points_left <= 2) {
-                make_kd_tree(!dimension, start + 1, 1, node);
+                dim = cycle_dimensions(dim, true);
+                make_kd_tree(dim, start + 1, 1, node);
             }
             else{
-                make_kd_tree(!dimension, start, std::ceil(points_left/2.0 - 1), node);
-                make_kd_tree(!dimension, start + std::ceil(points_left/2.0), std::floor(points_left/2.0), node);
+                dim = cycle_dimensions(dim, true);
+                make_kd_tree(dim, start, std::ceil(points_left/2.0 - 1), node);
+                make_kd_tree(dim, start + std::ceil(points_left/2.0), std::floor(points_left/2.0), node);
                 return;
             }
         }
 
-    KdTree(Set parent_set, bool first_dimension){
+    KdTree(Set* parent_set){
         //Constructor
-        this->x_vals = parent_set.x_vals;
-        this->y_vals = parent_set.y_vals;
-        this->data_size = parent_set.data_size;
-        this->first_dimension = first_dimension;
+        this->data_size = parent_set->data_size;
+        this->dims = dimensions-1;
+        this->dim = 0;
+        this->points = new Point[data_size];
 
-        this->kd_node_array = new NODE[data_size];
+        for (int i = 0; i < data_size; i++){
+            for (int d = 0; d < dimensions; d++){
+                this->points[i].val[d] = parent_set->points[i].val[d];
+            }
+        }
+
+        this->kd_node_array = new Node[data_size];
 
         //Calls a recursive function to make create the object and all its properties
+        std::cout << "making tree\n";
         make_kd_tree(false, 0, data_size, NULL);
     }
     ~KdTree(){
@@ -253,7 +309,7 @@ class KdTree{
     }
 };
 
-class Transform{
+class Transform2D{
     public:
         double rot_mat[4];
         double trans_vec[2];
@@ -262,24 +318,24 @@ class Transform{
         void transform_set(Set* set){
             for (int i = 0; i < set->data_size; i++){
                 //Applies a single matrix multiplication with the provided x, y vector from the set
-                double temp_x = rot_mat[0] * set->x_vals[i] + rot_mat[1] * set->y_vals[i] + trans_vec[0];
-                double temp_y = rot_mat[2] * set->x_vals[i] + rot_mat[3] * set->y_vals[i] + trans_vec[1];
-                set->x_vals[i] = temp_x;
-                set->y_vals[i] = temp_y;
+                double temp_x = rot_mat[0] * set->points[i].val[0] + rot_mat[1] * set->points[i].val[1] + trans_vec[0];
+                double temp_y = rot_mat[2] * set->points[i].val[0] + rot_mat[3] * set->points[i].val[1] + trans_vec[1];
+                set->points[i].val[0] = temp_x;
+                set->points[i].val[1] = temp_y;
             }
         }
-        NODE transform_referenced_point(double x, double y){
+        Point transform_referenced_point(double x, double y){
             double temp_x = rot_mat[0] * x + rot_mat[1] * y + trans_vec[0];
             double temp_y = rot_mat[2] * x + rot_mat[3] * y + trans_vec[1];
-            NODE point;
-            point.pos_val[0] = temp_x;
-            point.pos_val[1] = temp_y;
+            Point point(2);
+            point.val[0] = temp_x;
+            point.val[1] = temp_y;
             return point;
         }
 
-    Transform(double x_trans, double y_trans, double z_rot){
+    Transform2D(double x_trans, double y_trans, double z_rot){
         //Constructor
-        //Sets the two elements of the transforms as per the desired movement
+        //Sets the two elements of the Transform2Ds as per the desired movement
         rot_mat[0] = cos(z_rot);
         rot_mat[1] = -sin(z_rot);
         rot_mat[2] = -rot_mat[1];
@@ -289,7 +345,7 @@ class Transform{
 
         this->z_rot = z_rot;
     }
-    ~Transform(){
+    ~Transform2D(){
         //Deconstructor
     }
 };
@@ -314,35 +370,35 @@ class Plot2D{
             //and y so that we can size the plot window properly. This is not
             //necessary but we are going through all the data anyways so why not.
             for (int i = 0; i < set->data_size; i++){ 
-                if (set->x_vals[i] < extremas[0]){
-                    extremas[0] = set->x_vals[i]; 
+                if (set->points[i].val[0] < extremas[0]){
+                    extremas[0] = set->points[i].val[0]; 
                 }
-                else if (set->x_vals[i] > extremas[1]){
-                    extremas[1] = set->x_vals[i];
+                else if (set->points[i].val[0] > extremas[1]){
+                    extremas[1] = set->points[i].val[0];
                 }
-                if (set->y_vals[i] < extremas[2]){
-                    extremas[2] = set->y_vals[i]; 
+                if (set->points[i].val[1] < extremas[2]){
+                    extremas[2] = set->points[i].val[1]; 
                 }
-                else if (set->y_vals[i] > extremas[3]){
-                    extremas[3] = set->y_vals[i];
+                else if (set->points[i].val[1] > extremas[3]){
+                    extremas[3] = set->points[i].val[1];
                 }
                 //This is where we actually place the data into the file
-                osetf << set->x_vals[i] << ' ' << set->y_vals[i] << '\n';
+                osetf << set->points[i].val[0] << ' ' << set->points[i].val[1] << '\n';
             }
             number_of_plots++;
             gnup_line += "\"" + filename + "\",";
         }
 
-        void add_line(NODE* node1, NODE* node2){
-            double x1 = node1->pos_val[0];
-            double x2 = node2->pos_val[0];
-            double y1 = node1->pos_val[1];
-            double y2 = node2->pos_val[1];
+        void add_line(Point* point1, Point* point2){
+            double x1 = point1->val[0];
+            double x2 = point2->val[0];
+            double y1 = point1->val[1];
+            double y2 = point2->val[1];
 
             double a = (y2 - y1)/(x2 - x1);
             double b = y1 - a*x1;
 
-            if (a != INFINITY && b != INFINITY){
+            if (a != INFINITY && b != INFINITY && a == a){
                 gnup_line += "[" + std::to_string(x1) + ":" + std::to_string(x2) + "] " + std::to_string(a) + "*x+" + std::to_string(b) + " notitle,";
             }
         }
@@ -419,7 +475,7 @@ class LaserScanData{
             las_size = las_vec.size();
             return 1;
         }
-        Set map_scan_points(Transform* transform, double scan_period){
+        Set map_scan_points(Transform2D* transform, double scan_period){
             double* las_x = new double[usable_las_size];
             double* las_y = new double[usable_las_size];
             int j = 0;
@@ -432,7 +488,8 @@ class LaserScanData{
                     j++;
                 }
             }
-            Set las_set(usable_las_size, las_x, las_y);
+            double* las_ar[2] = {las_x, las_y};
+            Set las_set(usable_las_size, las_ar);
             return las_set;
         }
 
@@ -444,95 +501,111 @@ class LaserScanData{
     }
 };
 
+class Correlation{
+    
+    Point* model_corr_2;
+    Node** temp_node;
+    Point** temp_point;
+
+    double norm_size;
+
+    
+
+    public:
+        Point current_point;
+        Point* model_corr_1;
+        double norm_x;
+        double norm_y;
+        double corrected_value;
+
+        Correlation(KdTree* model_tree, Set* data_set, int index, Transform2D transform){
+            //Making copies of individual point
+            this->current_point.val[0] = data_set->points[index].val[0];
+            this->current_point.val[1] = data_set->points[index].val[1];
+            //Doing some weird pointer thing. Looks like this is working.
+            this->temp_node = model_tree->find_closest_point(&current_point, false, true);
+            model_corr_1 = new Point();
+            model_corr_2 = new Point();
+            this->model_corr_1->val[0] = temp_node[0]->val[0]; //mi1
+            this->model_corr_1->val[1] = temp_node[0]->val[1]; //mi1
+            this->model_corr_2->val[0] = temp_node[1]->val[0]; //mi2
+            this->model_corr_2->val[1] = temp_node[1]->val[1]; //mi2
+            
+            //Sign of the norm does not matter, using cross product with [0;0;1]
+            this->norm_x = model_corr_1->val[1] - model_corr_2->val[1];
+            this->norm_y = - (model_corr_1->val[0] - model_corr_2->val[0]);
+            this->norm_size = sqrt(norm_x*norm_x + norm_y*norm_y);
+            this->norm_x = norm_x/norm_size;
+            this->norm_y = norm_y/norm_size;
+
+            //CHECK: I assume this is correct for now, to be investigated further if stuff doesn't work as expected
+            this->corrected_value = norm_x*(transform.rot_mat[0]*current_point.val[0] + transform.rot_mat[1]*current_point.val[1] + transform.trans_vec[0] - model_corr_1->val[0]) + \
+                                norm_y*(transform.rot_mat[2]*current_point.val[0] + transform.rot_mat[3]*current_point.val[1] + transform.trans_vec[1] - model_corr_1->val[1]);
+        }
+        Correlation(){
+        }
+
+};
+
 int main(){
-    double guesses = 0;
-    double correntropy_factor = 0.1;
+    //Parameters that would be set on ROS
+    dimensions = 2;
+    int max_guesses = 5;
+    double correntropy_factor = 0.15;
     double transform_tresh = 0.001 ;
+    
+    //Parameters we just need initialized
+    int guesses = 0;
     double transform_diff = INFINITY;
+    Transform2D base_transform(0, 0, 0);
 
-    Transform base_transform(0, 0, 0);
-    Transform true_transform(-0.1, -0.1, 0.1);
+    Transform2D true_transform(-0.05, -0.05, 0.1);
+    Transform2D other_transform(0,0,0.2);
 
-    /* double x_vals[9] = {-1, -0.5, 0, 0.5, 1, 1, 1, 0.5, 1};
-    double y_vals[9] = {1, 0.5, 1, 1, 1, 0.5, 0, 0, -1};
-    int data_size = 9;
-
-    Set model_set(data_size, x_vals, y_vals);
-    Set data_set(data_size, x_vals, y_vals);
-    true_transform.transform_set(&data_set); */
-
+    //Info we would get from the laser scan message
     double scan_period = (2*M_PI)/360;
     LaserScanData laser_scan;
     laser_scan.read_from_file("incl/test_1_range_data.txt");
+    
+    //Will need something to interpret the laser scan message
     int data_size = laser_scan.usable_las_size;
 
     Set model_set = laser_scan.map_scan_points(&base_transform, scan_period);
     Set data_set = laser_scan.map_scan_points(&true_transform, scan_period);
-
+    true_transform.transform_set(&data_set);
 
     Plot2D plot(false);
 
-    KdTree model_tree(model_set, false);
+    KdTree model_tree(&model_set);
 
-    Transform guess_transform(0, 0, 0);
+    Transform2D guess_transform(0, 0, 0);
 
     //Get first and second correlations in data set to model set
-    NODE** model_corr_1 = new NODE*[data_size];
-    NODE** model_corr_2 = new NODE*[data_size];
-    NODE** model_temp;
 
     plot.add_data(&model_set);
-    
 
-    while (transform_diff > transform_tresh && guesses < 25){
+    while (transform_diff > transform_tresh && guesses < max_guesses){
 
         //  --  This section works fine  --
-        //Set transformed_set = *data_set.copy_set();
-        Set transformed_set = data_set;
-        guess_transform.transform_set(&transformed_set);
-        for (int i = 0; i < data_size; i++){
-            //Making copies of individual point
-            double current_point_arr[2] = {transformed_set.x_vals[i], transformed_set.y_vals[i]};
-            NODE current_point;
-            current_point.pos_val[0] = transformed_set.x_vals[i];
-            current_point.pos_val[1] = transformed_set.y_vals[i];
-            //Doing some weird pointer thing. Looks like this is working.
-            model_temp = model_tree.find_closest_point(current_point_arr, false, true);
-            model_corr_1[i] = model_temp[0]; //mi1
-            model_corr_2[i] = model_temp[1]; //mi2
+        guess_transform.transform_set(&data_set);
 
-            plot.add_line(model_corr_1[i], &current_point);
-            //plot.add_line(data_corr_2[i], &current_point);
-        }
-        plot.add_data(&transformed_set);
+        Correlation* corrs = new Correlation[data_size];
 
-        //Calculate norms from the correlations for p2l and directly calculate all the corrected point values n*[Ap+t-m]
-        double* norm_x = new double[data_size];
-        double* norm_y = new double[data_size];
-        double norm_size = 0;
-        double* corrected_value = new double[data_size];
         for (int i = 0; i < data_size; i++){
-            //Sign of the norm does not matter, using cross product with [0;0;1]
-            norm_x[i] = model_corr_1[i]->pos_val[1] - model_corr_2[i]->pos_val[1];
-            norm_y[i] = - (model_corr_1[i]->pos_val[0] - model_corr_2[i]->pos_val[0]);
-            norm_size = sqrt(norm_x[i]*norm_x[i] + norm_y[i]*norm_y[i]);
-            norm_x[i] = norm_x[i]/norm_size;
-            norm_y[i] = norm_y[i]/norm_size;
-            
-            //CHECK: I assume this is correct for now, to be investigated further if stuff doesn't work as expected
-            corrected_value[i] = norm_x[i]*(guess_transform.rot_mat[0]*transformed_set.x_vals[i] + guess_transform.rot_mat[1]*transformed_set.y_vals[i] + guess_transform.trans_vec[0] - model_corr_1[i]->pos_val[0]) + \
-                                norm_y[i]*(guess_transform.rot_mat[2]*transformed_set.x_vals[i] + guess_transform.rot_mat[3]*transformed_set.y_vals[i] + guess_transform.trans_vec[1] - model_corr_1[i]->pos_val[1]);
+            corrs[i] = Correlation(&model_tree, &data_set, i, guess_transform);
+            plot.add_line(corrs[i].model_corr_1, &corrs[i].current_point);
         }
+        plot.add_data(&data_set);
 
         //Calculate the standard deviation of the corrected value estimate
         double mean = 0;
         for (int i = 0; i < data_size; i++){
-            mean += corrected_value[i];
+            mean += corrs[i].corrected_value;
         }
         mean = mean/data_size;
         double std_dev = 0;
         for (int i = 0; i < data_size; i++){
-            std_dev += abs(corrected_value[i] - mean);
+            std_dev += abs(corrs[i].corrected_value - mean);
         }
         std_dev = sqrt(std_dev/data_size);
 
@@ -547,15 +620,15 @@ int main(){
         double delta = 0;
         double g_delta = 0;
         for (int i = 0; i < data_size; i++){
-            delta = exp(- corrected_value[i] * corrected_value[i] / (2 * correntropy_factor * std_dev));
-            g_delta = (model_corr_1[i]->pos_val[0] * norm_x[i] + model_corr_1[i]->pos_val[1] * norm_y[i]) * delta;
+            delta = exp(- corrs[i].corrected_value * corrs[i].corrected_value / (2 * correntropy_factor * std_dev));
+            g_delta = (corrs[i].model_corr_1->val[0] * corrs[i].norm_x + corrs[i].model_corr_1->val[1] * corrs[i].norm_y) * delta;
             //g = [nx⋅px⋅(mx⋅nx + my⋅ny)  nx⋅py⋅(mx⋅nx + my⋅ny)  ny⋅px⋅(mx⋅nx + my⋅ny)  ny⋅py⋅(mx⋅nx + my⋅ny)  nx⋅(mx⋅nx + my⋅ny)  ny⋅(mx⋅nx+ my⋅ny)]
-            g[0] += norm_x[i] * transformed_set.x_vals[i] * g_delta;
-            g[1] += norm_x[i] * transformed_set.y_vals[i] * g_delta;
-            g[2] += norm_y[i] * transformed_set.x_vals[i] * g_delta;
-            g[3] += norm_y[i] * transformed_set.y_vals[i] * g_delta;
-            g[4] += norm_x[i] * g_delta;
-            g[5] += norm_y[i] * g_delta;
+            g[0] += corrs[i].norm_x * data_set.points[i].val[0] * g_delta;
+            g[1] += corrs[i].norm_x * data_set.points[i].val[1] * g_delta;
+            g[2] += corrs[i].norm_y * data_set.points[i].val[0] * g_delta;
+            g[3] += corrs[i].norm_y * data_set.points[i].val[1] * g_delta;
+            g[4] += corrs[i].norm_x * g_delta;
+            g[5] += corrs[i].norm_y * g_delta;
 
       /*    ⎡     2   2        2                   2                       2                    ⎤
             ⎢ 0 nx ⋅px     1 nx ⋅px⋅py   2 nx⋅ny⋅px   3 nx⋅ny⋅px⋅py    4 nx ⋅px       5 nx⋅ny⋅px⎥
@@ -575,32 +648,32 @@ int main(){
             ⎢                                    2              2                           2   ⎥
             ⎣30 nx⋅ny⋅px    31 nx⋅ny⋅py     32 ny ⋅px      33 ny ⋅py     34 nx⋅ny     35 ny     ⎦ */
 
-            G[0] += norm_x[i] * norm_x[i] * transformed_set.x_vals[i] * transformed_set.x_vals[i] * delta;
-            G[7] += norm_x[i] * norm_x[i] * transformed_set.y_vals[i] * transformed_set.y_vals[i] * delta;
-            G[14] += norm_y[i] * norm_y[i] * transformed_set.x_vals[i] * transformed_set.x_vals[i] * delta;
-            G[21] += norm_y[i] * norm_y[i] * transformed_set.y_vals[i] * transformed_set.y_vals[i] * delta;
-            G[28] += norm_x[i] * norm_x[i] * delta;
-            G[35] += norm_y[i] * norm_y[i] * delta;
+            G[0] += corrs[i].norm_x * corrs[i].norm_x * data_set.points[i].val[0] * data_set.points[i].val[0] * delta;
+            G[7] += corrs[i].norm_x * corrs[i].norm_x * data_set.points[i].val[1] * data_set.points[i].val[1] * delta;
+            G[14] += corrs[i].norm_y * corrs[i].norm_y * data_set.points[i].val[0] * data_set.points[i].val[0] * delta;
+            G[21] += corrs[i].norm_y * corrs[i].norm_y * data_set.points[i].val[1] * data_set.points[i].val[1] * delta;
+            G[28] += corrs[i].norm_x * corrs[i].norm_x * delta;
+            G[35] += corrs[i].norm_y * corrs[i].norm_y * delta;
 
-            G[1] += norm_x[i] * norm_x[i] * transformed_set.x_vals[i] * transformed_set.y_vals[i] * delta; G[6] = G[1];//xx xy
-            G[2] += norm_x[i] * norm_y[i] * transformed_set.x_vals[i] * transformed_set.x_vals[i] * delta; G[12] = G[2];//xy xx
-            G[3] += norm_x[i] * norm_y[i] * transformed_set.x_vals[i] * transformed_set.y_vals[i] * delta; G[18] = G[3];//xy xy
-            G[4] += norm_x[i] * norm_x[i] * transformed_set.x_vals[i] * delta;                              G[24] = G[4];//xx x
-            G[5] += norm_x[i] * norm_y[i] * transformed_set.x_vals[i] * delta;                              G[30] = G[5];//xy x
+            G[1] += corrs[i].norm_x * corrs[i].norm_x * data_set.points[i].val[0] * data_set.points[i].val[1] * delta; G[6] = G[1];//xx xy
+            G[2] += corrs[i].norm_x * corrs[i].norm_y * data_set.points[i].val[0] * data_set.points[i].val[0] * delta; G[12] = G[2];//xy xx
+            G[3] += corrs[i].norm_x * corrs[i].norm_y * data_set.points[i].val[0] * data_set.points[i].val[1] * delta; G[18] = G[3];//xy xy
+            G[4] += corrs[i].norm_x * corrs[i].norm_x * data_set.points[i].val[0] * delta;                              G[24] = G[4];//xx x
+            G[5] += corrs[i].norm_x * corrs[i].norm_y * data_set.points[i].val[0] * delta;                              G[30] = G[5];//xy x
 
             //G[8]           -- This is equal to G[3] so we don't compute it here --                                      //xy xy
-            G[9] += norm_x[i] * norm_y[i] * transformed_set.y_vals[i] * transformed_set.y_vals[i] * delta; G[19] = G[9];//xy yy
-            G[10] += norm_x[i] * norm_x[i] * transformed_set.y_vals[i] * delta;                             G[25] = G[10];//xx y
-            G[11] += norm_x[i] * norm_y[i] * transformed_set.y_vals[i] * delta;                             G[31] = G[11];//xy y
+            G[9] += corrs[i].norm_x * corrs[i].norm_y * data_set.points[i].val[1] * data_set.points[i].val[1] * delta; G[19] = G[9];//xy yy
+            G[10] += corrs[i].norm_x * corrs[i].norm_x * data_set.points[i].val[1] * delta;                             G[25] = G[10];//xx y
+            G[11] += corrs[i].norm_x * corrs[i].norm_y * data_set.points[i].val[1] * delta;                             G[31] = G[11];//xy y
 
-            G[15] += norm_y[i] * norm_y[i] * transformed_set.x_vals[i] * transformed_set.y_vals[i] * delta; G[20] = G[15];//yy xy
+            G[15] += corrs[i].norm_y * corrs[i].norm_y * data_set.points[i].val[0] * data_set.points[i].val[1] * delta; G[20] = G[15];//yy xy
             //G[16]          -- This is equal to G[5] so we don't compute it here --                         //xy x
-            G[17] += norm_y[i] * norm_y[i] * transformed_set.x_vals[i] * delta;                             G[32] = G[17];//yy x
+            G[17] += corrs[i].norm_y * corrs[i].norm_y * data_set.points[i].val[0] * delta;                             G[32] = G[17];//yy x
         
             //G[22]          -- This is equal to G[11] so we don't compute it here --                         //xy y
-            G[23] += norm_y[i] * norm_y[i] * transformed_set.y_vals[i] * delta;                             G[33] = G[23];//yy y
+            G[23] += corrs[i].norm_y * corrs[i].norm_y * data_set.points[i].val[1] * delta;                             G[33] = G[23];//yy y
         
-            G[29] += norm_x[i] * norm_y[i] * delta;                                                          G[34] = G[29];//xy
+            G[29] += corrs[i].norm_x * corrs[i].norm_y * delta;                                                          G[34] = G[29];//xy
 
         }
         //Set values that reappear
@@ -659,7 +732,7 @@ int main(){
         }
         std::cout << "\n\n"; */
 
-        //Evaluate difference and update guess transform
+        //Evaluate difference and update guess Transform2D
         transform_diff = 0;
         transform_diff += (guess_transform.rot_mat[0] - x[0]) * (guess_transform.rot_mat[0] - x[0]);
         transform_diff += (guess_transform.rot_mat[1] - x[1]) * (guess_transform.rot_mat[1] - x[1]);
@@ -678,5 +751,7 @@ int main(){
         std::cout << "Guessed translation of: " << guess_transform.trans_vec[0] << ", " << guess_transform.trans_vec[1] << '\n';
         guesses++;
     }
+    guess_transform.transform_set(&data_set);
+    plot.add_data(&data_set);
     plot.plot_data();
 }
