@@ -1,5 +1,8 @@
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 #include <gnuplot.h>
 #include <math.h>
@@ -315,6 +318,32 @@ class Transform2D{
         double trans_vec[2];
         double z_rot;
 
+        double compare_transform(double* vector){
+            double transform_diff = 0;
+            transform_diff += (this->rot_mat[0] - vector[0]) * (this->rot_mat[0] - vector[0]);
+            transform_diff += (this->rot_mat[1] - vector[1]) * (this->rot_mat[1] - vector[1]);
+            transform_diff += (this->rot_mat[2] - vector[2]) * (this->rot_mat[2] - vector[2]);
+            transform_diff += (this->rot_mat[3] - vector[3]) * (this->rot_mat[3] - vector[3]);
+            transform_diff += (this->trans_vec[0] - vector[4]) * (this->trans_vec[0] - vector[4]);
+            transform_diff += (this->trans_vec[1] - vector[5]) * (this->trans_vec[1] - vector[5]);
+            return transform_diff/6;
+        }
+
+        void update_transform(double* vector){
+            this->rot_mat[0] = vector[0];
+            this->rot_mat[1] = vector[1];
+            this->rot_mat[2] = vector[2];
+            this->rot_mat[3] = vector[3];
+            this->trans_vec[0] = vector[4];
+            this->trans_vec[1] = vector[5];
+        }
+
+        void print_transform(){
+            std::cout << "⎡" << rot_mat[0] << "\t " << rot_mat[1] << "\t " << trans_vec[0] << "⎤\n" \
+                      << "|" << rot_mat[2] << "\t " << rot_mat[3] << "\t " << trans_vec[1] << "|\n" \
+                      << "⎣0\t 0\t 1⎦\n";
+        }
+
         void transform_set(Set* set){
             for (int i = 0; i < set->data_size; i++){
                 //Applies a single matrix multiplication with the provided x, y vector from the set
@@ -331,6 +360,21 @@ class Transform2D{
             point.val[0] = temp_x;
             point.val[1] = temp_y;
             return point;
+        }
+        void add_transform(Transform2D* added_transform){
+            Transform2D temp_transform(0, 0, 0);
+            temp_transform.rot_mat[0] = rot_mat[0] * added_transform->rot_mat[0] + rot_mat[1] * added_transform->rot_mat[2];
+            temp_transform.rot_mat[1] = rot_mat[0] * added_transform->rot_mat[1] + rot_mat[1] * added_transform->rot_mat[3];
+            temp_transform.rot_mat[2] = rot_mat[2] * added_transform->rot_mat[0] + rot_mat[3] * added_transform->rot_mat[2];
+            temp_transform.rot_mat[3] = rot_mat[2] * added_transform->rot_mat[1] + rot_mat[3] * added_transform->rot_mat[3];
+            temp_transform.trans_vec[0] = rot_mat[0] * added_transform->trans_vec[0] + rot_mat[1] * added_transform->trans_vec[1] + trans_vec[0];
+            temp_transform.trans_vec[1] = rot_mat[2] * added_transform->trans_vec[0] + rot_mat[3] * added_transform->trans_vec[1] + trans_vec[1];
+            this->rot_mat[0] = temp_transform.rot_mat[0];
+            this->rot_mat[1] = temp_transform.rot_mat[1];
+            this->rot_mat[2] = temp_transform.rot_mat[2];
+            this->rot_mat[3] = temp_transform.rot_mat[3];
+            this->trans_vec[0] = temp_transform.trans_vec[0];
+            this->trans_vec[1] = temp_transform.trans_vec[1];
         }
 
     Transform2D(double x_trans, double y_trans, double z_rot){
@@ -352,19 +396,22 @@ class Transform2D{
 
 class Plot2D{
     bool data_permanence = false;
+    int max_plots = 0;
     int number_of_plots = 0;
     double padding = 1;
     double extremas[4] = {INFINITY, 0, INFINITY, 0};
 
     std::string gnup_line = "plot ";
+    std::string filenames = "";
 
     public:
-        std::string* filenames;
         int total_plots;
 
         void add_data(Set* set){
             //Add file name to the array and create the file itself
             std::string filename = "dat/temp2d_" + std::to_string(number_of_plots)+ ".dat";
+            filenames += filename + "|";
+
             std::ofstream osetf{filename};
             //Go through all the data to find what is the maximum and minimum in x
             //and y so that we can size the plot window properly. This is not
@@ -422,21 +469,32 @@ class Plot2D{
             gp.sendLine(gnup_line);
         }
 
-    Plot2D(bool keep_data){
+    Plot2D(bool keep_data, int max_guesses){
         //Constructor
         this->data_permanence = keep_data;
+        this->max_plots = max_guesses;
     }
     ~Plot2D(){
+        //Deconstructor, removes data files if desired
         if (!data_permanence){
-            for (int i = 0; i < total_plots; i++){
-                remove(filenames[i].c_str());
+            int s = 0;
+            for (int i = 0; i < max_plots+1; i++){
+                std::string filename = "";
+                while(filenames[s] != '|'){
+                    filename += filenames[s];
+                    s++;
+                }
+                remove(filename.c_str());
+                s++;
             }
         }
     }
 };
 
-class LaserScanData{
+class TextLaserScanData{
     std::vector<double> las_vec;
+    bool done = false;
+    bool file_permanence;
 
     public:
         //Total number of points to compute xy position
@@ -453,14 +511,16 @@ class LaserScanData{
             else{
                 std::cout << "Reading data\n";
             }
-            while (ilasf){
+            while (!done){
                 std::string las_read;
                 ilasf >> las_read;
                 int las_length = las_read.length()-1;
                 if (las_read[las_length] == ','){
                     las_read.erase(las_read.end()-1);
                 }
-                
+                else{
+                    done = true;
+                }
                 double las_val = 0;
                 if (las_length > 2){
                     las_val = std::stod(las_read);
@@ -471,6 +531,7 @@ class LaserScanData{
                 }
                 
             }
+            std::cout << "done reading\n";
             ilasf.close();
             las_size = las_vec.size();
             return 1;
@@ -484,7 +545,7 @@ class LaserScanData{
                     double temp_scan_x = las_vec[i] * cos(scan_period * i);
                     double temp_scan_y = las_vec[i] * sin(scan_period * i);
                     las_x[j] = transform->trans_vec[0] + temp_scan_x * cos(transform->z_rot) - temp_scan_y * sin(transform->z_rot);
-                    las_y[j] = transform->trans_vec[1] + temp_scan_y * cos(transform->z_rot) - temp_scan_x * sin(transform->z_rot);
+                    las_y[j] = transform->trans_vec[1] + temp_scan_y * cos(transform->z_rot) + temp_scan_x * sin(transform->z_rot);
                     j++;
                 }
             }
@@ -493,10 +554,11 @@ class LaserScanData{
             return las_set;
         }
 
-    LaserScanData(){
+    TextLaserScanData(bool file_permanence){
     //Constructor
+        this->file_permanence = file_permanence;
     }
-    ~LaserScanData(){
+    ~TextLaserScanData(){
     //Destructor
     }
 };
@@ -518,7 +580,10 @@ class Correlation{
         double norm_y;
         double corrected_value;
 
-        Correlation(KdTree* model_tree, Set* data_set, int index, Transform2D transform){
+        static double std_dev;
+        static double mean;
+
+        Correlation(KdTree* model_tree, Set* data_set, int index, Transform2D* transform){
             //Making copies of individual point
             this->current_point.val[0] = data_set->points[index].val[0];
             this->current_point.val[1] = data_set->points[index].val[1];
@@ -539,153 +604,95 @@ class Correlation{
             this->norm_y = norm_y/norm_size;
 
             //CHECK: I assume this is correct for now, to be investigated further if stuff doesn't work as expected
-            this->corrected_value = norm_x*(transform.rot_mat[0]*current_point.val[0] + transform.rot_mat[1]*current_point.val[1] + transform.trans_vec[0] - model_corr_1->val[0]) + \
-                                norm_y*(transform.rot_mat[2]*current_point.val[0] + transform.rot_mat[3]*current_point.val[1] + transform.trans_vec[1] - model_corr_1->val[1]);
+            this->corrected_value = norm_x*(transform->rot_mat[0]*current_point.val[0] + transform->rot_mat[1]*current_point.val[1] + transform->trans_vec[0] - model_corr_1->val[0]) + \
+                                norm_y*(transform->rot_mat[2]*current_point.val[0] + transform->rot_mat[3]*current_point.val[1] + transform->trans_vec[1] - model_corr_1->val[1]);
         }
         Correlation(){
         }
 
 };
 
-int main(){
-    //Parameters that would be set on ROS
-    dimensions = 2;
-    int max_guesses = 5;
-    double correntropy_factor = 0.15;
-    double transform_tresh = 0.001 ;
-    
-    //Parameters we just need initialized
-    int guesses = 0;
-    double transform_diff = INFINITY;
-    Transform2D base_transform(0, 0, 0);
-
-    Transform2D true_transform(-0.05, -0.05, 0.1);
-    Transform2D other_transform(0,0,0.2);
-
-    //Info we would get from the laser scan message
-    double scan_period = (2*M_PI)/360;
-    LaserScanData laser_scan;
-    laser_scan.read_from_file("incl/test_1_range_data.txt");
-    
-    //Will need something to interpret the laser scan message
-    int data_size = laser_scan.usable_las_size;
-
-    Set model_set = laser_scan.map_scan_points(&base_transform, scan_period);
-    Set data_set = laser_scan.map_scan_points(&true_transform, scan_period);
-    true_transform.transform_set(&data_set);
-
-    Plot2D plot(false);
-
-    KdTree model_tree(&model_set);
-
-    Transform2D guess_transform(0, 0, 0);
-
-    //Get first and second correlations in data set to model set
-
-    plot.add_data(&model_set);
-
-    while (transform_diff > transform_tresh && guesses < max_guesses){
-
-        //  --  This section works fine  --
-        guess_transform.transform_set(&data_set);
-
-        Correlation* corrs = new Correlation[data_size];
-
-        for (int i = 0; i < data_size; i++){
-            corrs[i] = Correlation(&model_tree, &data_set, i, guess_transform);
-            plot.add_line(corrs[i].model_corr_1, &corrs[i].current_point);
-        }
-        plot.add_data(&data_set);
-
-        //Calculate the standard deviation of the corrected value estimate
-        double mean = 0;
-        for (int i = 0; i < data_size; i++){
-            mean += corrs[i].corrected_value;
-        }
-        mean = mean/data_size;
-        double std_dev = 0;
-        for (int i = 0; i < data_size; i++){
-            std_dev += abs(corrs[i].corrected_value - mean);
-        }
-        std_dev = sqrt(std_dev/data_size);
-
-        //Compute matrices g and G for the final equation
-        double g[6] = {0, 0, 0, 0, 0, 0};
-        double G[36] = {0, 0, 0, 0, 0, 0, \
-                        0, 0, 0, 0, 0, 0, \
-                        0, 0, 0, 0, 0, 0, \
-                        0, 0, 0, 0, 0, 0, \
-                        0, 0, 0, 0, 0, 0, \
-                        0, 0, 0, 0, 0, 0};
-        double delta = 0;
-        double g_delta = 0;
-        for (int i = 0; i < data_size; i++){
+double* make_g_vector(Correlation* corrs, Set* data_set, double std_dev, double correntropy_factor, int data_size, bool print){
+    double* g = new double[6];
+    double delta = 0;
+    double g_delta = 0;
+    for (int i = 0; i < data_size; i++){
             delta = exp(- corrs[i].corrected_value * corrs[i].corrected_value / (2 * correntropy_factor * std_dev));
             g_delta = (corrs[i].model_corr_1->val[0] * corrs[i].norm_x + corrs[i].model_corr_1->val[1] * corrs[i].norm_y) * delta;
             //g = [nx⋅px⋅(mx⋅nx + my⋅ny)  nx⋅py⋅(mx⋅nx + my⋅ny)  ny⋅px⋅(mx⋅nx + my⋅ny)  ny⋅py⋅(mx⋅nx + my⋅ny)  nx⋅(mx⋅nx + my⋅ny)  ny⋅(mx⋅nx+ my⋅ny)]
-            g[0] += corrs[i].norm_x * data_set.points[i].val[0] * g_delta;
-            g[1] += corrs[i].norm_x * data_set.points[i].val[1] * g_delta;
-            g[2] += corrs[i].norm_y * data_set.points[i].val[0] * g_delta;
-            g[3] += corrs[i].norm_y * data_set.points[i].val[1] * g_delta;
+            g[0] += corrs[i].norm_x * data_set->points[i].val[0] * g_delta;
+            g[1] += corrs[i].norm_x * data_set->points[i].val[1] * g_delta;
+            g[2] += corrs[i].norm_y * data_set->points[i].val[0] * g_delta;
+            g[3] += corrs[i].norm_y * data_set->points[i].val[1] * g_delta;
             g[4] += corrs[i].norm_x * g_delta;
             g[5] += corrs[i].norm_y * g_delta;
+    }
+    if (print){
+        //Print vector so that it can easily be imported into matlab if need be
+        std::cout << "g=[" << g[0] << ',' << g[1] << ',' << g[2] << ',' << g[3] << ',' << g[4] << ',' << g[5] << "]\n\n";
+    }
+    return g;
+}
 
-      /*    ⎡     2   2        2                   2                       2                    ⎤
-            ⎢ 0 nx ⋅px     1 nx ⋅px⋅py   2 nx⋅ny⋅px   3 nx⋅ny⋅px⋅py    4 nx ⋅px       5 nx⋅ny⋅px⎥
-            ⎢                                                                                   ⎥
-            ⎢     2              2   2                            2        2                    ⎥
-            ⎢ 6 nx ⋅px⋅py    7 nx ⋅py    8 nx⋅ny⋅px⋅py  9 nx⋅ny⋅py     10 nx ⋅py     11 nx⋅ny⋅py⎥
-            ⎢                                                                                   ⎥
-            ⎢           2                        2   2         2                           2    ⎥
-            ⎢12 nx⋅ny⋅px   13 nx⋅ny⋅px⋅py   14 ny ⋅px     15 ny ⋅px⋅py  16 nx⋅ny⋅px   17 ny ⋅px ⎥
-            ⎢                                                                                   ⎥
-            ⎢                           2        2               2   2                     2    ⎥
-            ⎢18 nx⋅ny⋅px⋅py  19 nx⋅ny⋅py    20 ny ⋅px⋅py    21 ny ⋅py    22 nx⋅ny⋅py  23 ny ⋅py ⎥
-            ⎢                                                                                   ⎥
-            ⎢     2               2                                            2                ⎥
-            ⎢24 nx ⋅px       25 nx ⋅py     26 nx⋅ny⋅px    27 nx⋅ny⋅py     28 nx       29 nx⋅ny  ⎥
-            ⎢                                                                                   ⎥
-            ⎢                                    2              2                           2   ⎥
-            ⎣30 nx⋅ny⋅px    31 nx⋅ny⋅py     32 ny ⋅px      33 ny ⋅py     34 nx⋅ny     35 ny     ⎦ */
+double* make_G_matrix(Correlation* corrs, Set* data_set, double std_dev, double correntropy_factor, int data_size, bool print){
+    double* G = new double[36];
+    double delta = 0;
+    for (int i = 0; i < data_size; i++){
+        delta = exp(- corrs[i].corrected_value * corrs[i].corrected_value / (2 * correntropy_factor * std_dev));
 
-            G[0] += corrs[i].norm_x * corrs[i].norm_x * data_set.points[i].val[0] * data_set.points[i].val[0] * delta;
-            G[7] += corrs[i].norm_x * corrs[i].norm_x * data_set.points[i].val[1] * data_set.points[i].val[1] * delta;
-            G[14] += corrs[i].norm_y * corrs[i].norm_y * data_set.points[i].val[0] * data_set.points[i].val[0] * delta;
-            G[21] += corrs[i].norm_y * corrs[i].norm_y * data_set.points[i].val[1] * data_set.points[i].val[1] * delta;
-            G[28] += corrs[i].norm_x * corrs[i].norm_x * delta;
-            G[35] += corrs[i].norm_y * corrs[i].norm_y * delta;
+    /*    ⎡     2   2        2                   2                       2                    ⎤
+        ⎢ 0 nx ⋅px     1 nx ⋅px⋅py   2 nx⋅ny⋅px   3 nx⋅ny⋅px⋅py    4 nx ⋅px       5 nx⋅ny⋅px⎥
+        ⎢                                                                                   ⎥
+        ⎢     2              2   2                            2        2                    ⎥
+        ⎢ 6 nx ⋅px⋅py    7 nx ⋅py    8 nx⋅ny⋅px⋅py  9 nx⋅ny⋅py     10 nx ⋅py     11 nx⋅ny⋅py⎥
+        ⎢                                                                                   ⎥
+        ⎢           2                        2   2         2                           2    ⎥
+        ⎢12 nx⋅ny⋅px   13 nx⋅ny⋅px⋅py   14 ny ⋅px     15 ny ⋅px⋅py  16 nx⋅ny⋅px   17 ny ⋅px ⎥
+        ⎢                                                                                   ⎥
+        ⎢                           2        2               2   2                     2    ⎥
+        ⎢18 nx⋅ny⋅px⋅py  19 nx⋅ny⋅py    20 ny ⋅px⋅py    21 ny ⋅py    22 nx⋅ny⋅py  23 ny ⋅py ⎥
+        ⎢                                                                                   ⎥
+        ⎢     2               2                                            2                ⎥
+        ⎢24 nx ⋅px       25 nx ⋅py     26 nx⋅ny⋅px    27 nx⋅ny⋅py     28 nx       29 nx⋅ny  ⎥
+        ⎢                                                                                   ⎥
+        ⎢                                    2              2                           2   ⎥
+        ⎣30 nx⋅ny⋅px    31 nx⋅ny⋅py     32 ny ⋅px      33 ny ⋅py     34 nx⋅ny     35 ny     ⎦ */
 
-            G[1] += corrs[i].norm_x * corrs[i].norm_x * data_set.points[i].val[0] * data_set.points[i].val[1] * delta; G[6] = G[1];//xx xy
-            G[2] += corrs[i].norm_x * corrs[i].norm_y * data_set.points[i].val[0] * data_set.points[i].val[0] * delta; G[12] = G[2];//xy xx
-            G[3] += corrs[i].norm_x * corrs[i].norm_y * data_set.points[i].val[0] * data_set.points[i].val[1] * delta; G[18] = G[3];//xy xy
-            G[4] += corrs[i].norm_x * corrs[i].norm_x * data_set.points[i].val[0] * delta;                              G[24] = G[4];//xx x
-            G[5] += corrs[i].norm_x * corrs[i].norm_y * data_set.points[i].val[0] * delta;                              G[30] = G[5];//xy x
+        G[0] += corrs[i].norm_x * corrs[i].norm_x * data_set->points[i].val[0] * data_set->points[i].val[0] * delta;
+        G[7] += corrs[i].norm_x * corrs[i].norm_x * data_set->points[i].val[1] * data_set->points[i].val[1] * delta;
+        G[14] += corrs[i].norm_y * corrs[i].norm_y * data_set->points[i].val[0] * data_set->points[i].val[0] * delta;
+        G[21] += corrs[i].norm_y * corrs[i].norm_y * data_set->points[i].val[1] * data_set->points[i].val[1] * delta;
+        G[28] += corrs[i].norm_x * corrs[i].norm_x * delta;
+        G[35] += corrs[i].norm_y * corrs[i].norm_y * delta;
 
-            //G[8]           -- This is equal to G[3] so we don't compute it here --                                      //xy xy
-            G[9] += corrs[i].norm_x * corrs[i].norm_y * data_set.points[i].val[1] * data_set.points[i].val[1] * delta; G[19] = G[9];//xy yy
-            G[10] += corrs[i].norm_x * corrs[i].norm_x * data_set.points[i].val[1] * delta;                             G[25] = G[10];//xx y
-            G[11] += corrs[i].norm_x * corrs[i].norm_y * data_set.points[i].val[1] * delta;                             G[31] = G[11];//xy y
+        G[1] += corrs[i].norm_x * corrs[i].norm_x * data_set->points[i].val[0] * data_set->points[i].val[1] * delta; G[6] = G[1];//xx xy
+        G[2] += corrs[i].norm_x * corrs[i].norm_y * data_set->points[i].val[0] * data_set->points[i].val[0] * delta; G[12] = G[2];//xy xx
+        G[3] += corrs[i].norm_x * corrs[i].norm_y * data_set->points[i].val[0] * data_set->points[i].val[1] * delta; G[18] = G[3];//xy xy
+        G[4] += corrs[i].norm_x * corrs[i].norm_x * data_set->points[i].val[0] * delta;                              G[24] = G[4];//xx x
+        G[5] += corrs[i].norm_x * corrs[i].norm_y * data_set->points[i].val[0] * delta;                              G[30] = G[5];//xy x
 
-            G[15] += corrs[i].norm_y * corrs[i].norm_y * data_set.points[i].val[0] * data_set.points[i].val[1] * delta; G[20] = G[15];//yy xy
-            //G[16]          -- This is equal to G[5] so we don't compute it here --                         //xy x
-            G[17] += corrs[i].norm_y * corrs[i].norm_y * data_set.points[i].val[0] * delta;                             G[32] = G[17];//yy x
+        //G[8]           -- This is equal to G[3] so we don't compute it here --                                      //xy xy
+        G[9] += corrs[i].norm_x * corrs[i].norm_y * data_set->points[i].val[1] * data_set->points[i].val[1] * delta; G[19] = G[9];//xy yy
+        G[10] += corrs[i].norm_x * corrs[i].norm_x * data_set->points[i].val[1] * delta;                             G[25] = G[10];//xx y
+        G[11] += corrs[i].norm_x * corrs[i].norm_y * data_set->points[i].val[1] * delta;                             G[31] = G[11];//xy y
+
+        G[15] += corrs[i].norm_y * corrs[i].norm_y * data_set->points[i].val[0] * data_set->points[i].val[1] * delta; G[20] = G[15];//yy xy
+        //G[16]          -- This is equal to G[5] so we don't compute it here --                         //xy x
+        G[17] += corrs[i].norm_y * corrs[i].norm_y * data_set->points[i].val[0] * delta;                             G[32] = G[17];//yy x
         
-            //G[22]          -- This is equal to G[11] so we don't compute it here --                         //xy y
-            G[23] += corrs[i].norm_y * corrs[i].norm_y * data_set.points[i].val[1] * delta;                             G[33] = G[23];//yy y
-        
-            G[29] += corrs[i].norm_x * corrs[i].norm_y * delta;                                                          G[34] = G[29];//xy
+        //G[22]          -- This is equal to G[11] so we don't compute it here --                         //xy y
+        G[23] += corrs[i].norm_y * corrs[i].norm_y * data_set->points[i].val[1] * delta;                             G[33] = G[23];//yy y
+        G[29] += corrs[i].norm_x * corrs[i].norm_y * delta;                                                          G[34] = G[29];//xy
 
-        }
-        //Set values that reappear
-        G[8] = G[3]; G[13] = G[3]; G[18] = G[3];
-        G[16] = G[5]; G[26] = G[5]; G[30] = G[5];
-        G[22] = G[11]; G[27] = G[11]; G[31] = G[11];
+    }
+    //Set values that reappear
+    G[8] = G[3]; G[13] = G[3]; G[18] = G[3];
+    G[16] = G[5]; G[26] = G[5]; G[30] = G[5];
+    G[22] = G[11]; G[27] = G[11]; G[31] = G[11];
 
-
-        //  --  This section works fine  --
-
-        //Print matrix so it can be easily imported into matlab if need be;
-        /* std::cout << std::setprecision(30);
+    //Print matrix so it can be easily imported into matlab if need be;
+    if (print){
+        std::cout << std::setprecision(30);
         std::cout << "G=[";
         for (int i = 0; i < 6; i++){
             for(int j = 0; j < 6; j++){
@@ -699,59 +706,130 @@ int main(){
             }
         }
         std::cout << "]\n\n";
+    }
 
-        std::cout << "g=[" << g[0] << ',' << g[1] << ',' << g[2] << ',' << g[3] << ',' << g[4] << ',' << g[5] << "]\n\n"; */
+    return G;
+}
 
-        double x[6] = {0, 0, 0, 0, 0, 0};
-
-        double mult = 0;
-        //This will make the G matrix triangular using Gaussian Elimination
-        //TODO: swap lines in case of bad pivot point
-        for (int j = 0; j < 5; j++){
-            for (int i = j+1; i < 6; i++){
-                mult = G[6*i+j]/G[6*j+j];
-                for (int k = 0; k < 6; k++){
-                    G[6*i+k] = G[6*i+k] - mult * G[6*j+k];
-                }
-                g[i] = g[i] - (mult * g[j]);
+double* solve_system(double* g, double* G, bool print){
+    double* x = new double[6];
+    double mult = 0;
+    //This will make the G matrix triangular using Gaussian Elimination
+    //TODO: swap lines in case of bad pivot point
+    for (int j = 0; j < 5; j++){
+        for (int i = j+1; i < 6; i++){
+            mult = G[6*i+j]/G[6*j+j];
+            for (int k = 0; k < 6; k++){
+                G[6*i+k] = G[6*i+k] - mult * G[6*j+k];
             }
+            g[i] = g[i] - (mult * g[j]);
         }
-        //Solve the now triangular system
-        double sum = 0;
-        x[5] = g[5]/G[35];
-        for (int i = 4; i >= 0; i--){
-            sum = 0;
-            for (int j = 5; j >= i+1; j--){
-                sum += G[6*i+j] * x[j];
-            }
-            x[i] = (g[i] - sum)/G[6*i+i];
+    }
+    //Solve the now triangular system
+    double sum = 0;
+    x[5] = g[5]/G[35];
+    for (int i = 4; i >= 0; i--){
+        sum = 0;
+        for (int j = 5; j >= i+1; j--){
+            sum += G[6*i+j] * x[j];
         }
-        /* std::cout << "Solution vector is: ";
+        x[i] = (g[i] - sum)/G[6*i+i];
+    }
+    //Print the solution vector to double check if need be
+    if (print){
+        std::cout << "Solution vector is: ";
         for (int i = 0; i < 6; i++){
             std::cout << x[i] << '\t';
         }
-        std::cout << "\n\n"; */
+        std::cout << "\n\n";
+    }
+    return x;
+}
 
-        //Evaluate difference and update guess Transform2D
-        transform_diff = 0;
-        transform_diff += (guess_transform.rot_mat[0] - x[0]) * (guess_transform.rot_mat[0] - x[0]);
-        transform_diff += (guess_transform.rot_mat[1] - x[1]) * (guess_transform.rot_mat[1] - x[1]);
-        transform_diff += (guess_transform.rot_mat[2] - x[2]) * (guess_transform.rot_mat[2] - x[2]);
-        transform_diff += (guess_transform.rot_mat[3] - x[3]) * (guess_transform.rot_mat[3] - x[3]);
-        transform_diff += (guess_transform.trans_vec[0] - x[4]) * (guess_transform.trans_vec[0] - x[4]);
-        transform_diff += (guess_transform.trans_vec[1] - x[5]) * (guess_transform.trans_vec[1] - x[5]);
-        transform_diff = transform_diff/6;
+int main(){
+    //Parameters that would be set on ROS
+    dimensions = 2;
+    int max_guesses = 5;
+    double correntropy_factor = 0.1;
+    double transform_tresh = 0.00001 ;
+    
+    //Parameters we just need initialized
+    int guesses = 0;
+    double transform_diff = INFINITY;
+    //This will serve as an initializer and a way to keep track of the total transforms
+    Transform2D total_transform(0, 0, 0);
+    Transform2D base_transform(0, 0, 1);
+    
 
-        guess_transform.rot_mat[0] = x[0];
-        guess_transform.rot_mat[1] = x[1];
-        guess_transform.rot_mat[2] = x[2];
-        guess_transform.rot_mat[3] = x[3];
-        guess_transform.trans_vec[0] = x[4];
-        guess_transform.trans_vec[1] = x[5];
+
+    Transform2D true_transform(0.05, 0.05, 1);
+
+    //Info we would get from the laser scan message
+    double scan_period = (2*M_PI)/360;
+    TextLaserScanData laser_scan(false);
+    laser_scan.read_from_file("incl/test_dat/test_1_range_data.txt");
+    
+    //Will need something to interpret the laser scan message
+    int data_size = laser_scan.usable_las_size;
+
+    Set model_set = laser_scan.map_scan_points(&base_transform, scan_period);
+    Set data_set = laser_scan.map_scan_points(&true_transform, scan_period);
+
+    Plot2D plot(false, max_guesses);
+
+    KdTree model_tree(&model_set);
+
+    Transform2D guess_transform(0, 0, 0);
+
+    //Get first and second correlations in data set to model set
+
+    plot.add_data(&model_set);
+    plot.add_data(&data_set);
+
+    while (transform_diff > transform_tresh && guesses < max_guesses){
+
+        //Apply guess transform on the set and add it to the total transform
+        //The guess transform is with respect to the previous guess
+        guess_transform.transform_set(&data_set);
+        total_transform.add_transform(&guess_transform);
+
+        Correlation* corrs = new Correlation[data_size];
+        //Get correlation between points and average for the standard deviation
+        double corr_mean = 0;
+        for (int i = 0; i < data_size; i++){
+            corrs[i] = Correlation(&model_tree, &data_set, i, &guess_transform);
+            corr_mean += corrs[i].corrected_value;
+            //plot.add_line(corrs[i].model_corr_1, &corrs[i].current_point);
+        }
+        corr_mean = corr_mean/data_size;
+        plot.add_data(&data_set);
+
+        //Calculate the standard deviation of the corrected value estimate
+        double std_dev = 0;
+        for (int i = 0; i < data_size; i++){
+            std_dev += abs(corrs[i].corrected_value - corr_mean);
+        }
+        std_dev = sqrt(std_dev/data_size);
+
+        //For two dimensions, g is a 1x6 vector and G is a 6x6 matrix
+        double* g = make_g_vector(corrs, &data_set, std_dev, correntropy_factor, data_size, false);
+        double* G = make_G_matrix(corrs, &data_set, std_dev, correntropy_factor, data_size, false);
+        //Solve the system using gaussian elimination
+        //TODO: skip or/and error message on receiving unsolvable system
+        double* x = solve_system(g, G, false);
+
+        //Evaluate difference and update guess Transform2D and update
+        transform_diff = guess_transform.compare_transform(x);
+        guess_transform.update_transform(x);
+
         std::cout << "Guessed translation of: " << guess_transform.trans_vec[0] << ", " << guess_transform.trans_vec[1] << '\n';
         guesses++;
     }
     guess_transform.transform_set(&data_set);
+    total_transform.add_transform(&guess_transform);
     plot.add_data(&data_set);
+
+    std::cout << "Final transform is:\n";
+    total_transform.print_transform();
     plot.plot_data();
 }
