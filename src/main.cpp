@@ -4,7 +4,7 @@
 #include <iostream>
 #include <iomanip>
 #include <fstream>
-#include <gnuplot.h>
+#include "../incl/gnuplot.h"
 #include <math.h>
 #include <string>
 #include <vector>
