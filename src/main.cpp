@@ -1,6 +1,8 @@
+#include <bits/types/clock_t.h>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <iostream>
 #include <iomanip>
 #include <fstream>
@@ -751,7 +753,9 @@ int main(){
     dimensions = 2;
     int max_guesses = 5;
     double correntropy_factor = 0.1;
-    double transform_tresh = 0.00001 ;
+    double transform_tresh = 0.00001;
+
+    clock_t start, end;
     
     //Parameters we just need initialized
     int guesses = 0;
@@ -761,13 +765,14 @@ int main(){
     Transform2D base_transform(0, 0, 1);
     
 
-
+    start = clock();
     Transform2D true_transform(0.05, 0.05, 1);
 
     //Info we would get from the laser scan message
     double scan_period = (2*M_PI)/360;
     TextLaserScanData laser_scan(false);
     laser_scan.read_from_file("incl/test_dat/test_1_range_data.txt");
+    
     
     //Will need something to interpret the laser scan message
     int data_size = laser_scan.usable_las_size;
@@ -831,5 +836,9 @@ int main(){
 
     std::cout << "Final transform is:\n";
     total_transform.print_transform();
+    end = clock();
+    double time_taken = double(end-start) / double(CLOCKS_PER_SEC);
+    std::cout << "Time for execution: " << time_taken << "s\n";
     plot.plot_data();
+    return 0;
 }
