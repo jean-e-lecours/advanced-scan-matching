@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+#include "mat.hpp"
+
 int dimensions;
 
 class Point{
@@ -751,7 +753,7 @@ double* solve_system(double* g, double* G, bool print){
 int main(){
     //Parameters that would be set on ROS
     dimensions = 2;
-    int max_guesses = 5;
+    int max_guesses = 10;
     double correntropy_factor = 0.1;
     double transform_tresh = 0.00001;
 
@@ -762,25 +764,25 @@ int main(){
     double transform_diff = INFINITY;
     //This will serve as an initializer and a way to keep track of the total transforms
     Transform2D total_transform(0, 0, 0);
-    Transform2D base_transform(0, 0, 1);
-    
+    Transform2D base_transform(0, 0, 0);
 
     start = clock();
-    Transform2D true_transform(0.05, 0.05, 1);
 
     //Info we would get from the laser scan message
     double scan_period = (2*M_PI)/360;
-    TextLaserScanData laser_scan(false);
-    laser_scan.read_from_file("incl/test_dat/test_1_range_data.txt");
+    TextLaserScanData laser_scan_1(false);
+    laser_scan_1.read_from_file("incl/test_dat/test_3_1.txt");
+    TextLaserScanData laser_scan_2(false);
+    laser_scan_2.read_from_file("incl/test_dat/test_3_2.txt");
     
     
     //Will need something to interpret the laser scan message
-    int data_size = laser_scan.usable_las_size;
+    int data_size = laser_scan_1.usable_las_size;
 
-    Set model_set = laser_scan.map_scan_points(&base_transform, scan_period);
-    Set data_set = laser_scan.map_scan_points(&true_transform, scan_period);
+    Set model_set = laser_scan_1.map_scan_points(&base_transform, scan_period);
+    Set data_set = laser_scan_2.map_scan_points(&base_transform, scan_period);
 
-    Plot2D plot(false, max_guesses);
+    Plot2D plot(true, max_guesses);
 
     KdTree model_tree(&model_set);
 
@@ -833,6 +835,18 @@ int main(){
     guess_transform.transform_set(&data_set);
     total_transform.add_transform(&guess_transform);
     plot.add_data(&data_set);
+
+    double* AtA = affine_to_rot(total_transform.rot_mat, dimensions, true);
+
+    Transform2D test_transform(total_transform.trans_vec[0],total_transform.trans_vec[1],0);
+    test_transform.rot_mat[0] = AtA[0];
+    test_transform.rot_mat[1] = AtA[1];
+    test_transform.rot_mat[2] = AtA[2];
+    test_transform.rot_mat[3] = AtA[3];
+    //This is a transform with a proper rotation matrix
+    test_transform.print_transform();
+    //TODO: adjust translation vector for the new proper rotation matrix
+
 
     std::cout << "Final transform is:\n";
     total_transform.print_transform();
