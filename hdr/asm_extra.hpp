@@ -75,4 +75,8 @@ class TextLaserScanData{
         TextLaserScanData(bool file_permanence);
 };
 
+double* make_g_vector(Correlation* corrs, Set* data_set, double std_dev, double correntropy_factor, int data_size, bool print);
+double* make_G_matrix(Correlation* corrs, Set* data_set, double std_dev, double correntropy_factor, int data_size, bool print);
+double* solve_system(double* g, double* G, bool print);
+
 #endif

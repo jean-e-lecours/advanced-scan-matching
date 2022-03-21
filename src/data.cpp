@@ -37,3 +37,14 @@ Set::Set(int data_size, double** point_vals){
         }
     }
 }
+Set::Set(int data_size, Point* points){
+    //Constuctor for copy only
+    this->data_size = data_size;
+    this->points = new Point[data_size];
+
+    for (int i = 0; i < data_size; i++){
+        for (int d = 0; d < dims; d++){
+            this->points[i].val[d] = points[i].val[d];
+        }
+    }
+}
