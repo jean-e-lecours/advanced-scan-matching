@@ -155,6 +155,43 @@ TextLaserScanData::TextLaserScanData(bool file_permanence){
     this->file_permanence = file_permanence;
 }
 
+int TextMapData::read_from_file(std::string filename, int size_x, int size_y, double pix_res){
+    std::vector<Point> map_points;
+    std::ifstream imapf{filename};
+    if (!imapf){
+        std::cerr << "Could not read map data!\n";
+        return 0;
+    }
+    else{
+        std::cout << "Reading map data\n";
+    }
+    int i = 0;
+    while (!done){
+        std::string map_read;
+        imapf >> map_read;
+        int map_length = map_read.length()-1;
+        if (map_read[map_length] == ','){
+            map_read.erase(map_read.end()-1);
+        }
+        else{
+            done = true;
+        }
+        int map_val = std::stoi(map_read);
+        if (map_val > 0){
+            Point curr_point(2);
+            curr_point.val[0] = i%size_y * pix_res;
+            curr_point.val[1] = trunc(float(i)/size_x) * pix_res;
+            map_points.push_back(curr_point);
+        }
+        i++;
+    }
+    std::cout << "done reading map\n";
+    this->map_set = new Set(map_points);
+    imapf.close();
+    return 1;
+}
+
+
 double* make_g_vector(Correlation* corrs, Set* data_set, double std_dev, double correntropy_factor, int data_size, bool print){
     double* g = new double[6];
     double delta = 0;

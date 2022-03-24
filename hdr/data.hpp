@@ -2,6 +2,7 @@
 #define DATA_H
 
 #include <iostream>
+#include <vector>
 
 class Point{
     public:
@@ -26,6 +27,8 @@ class Set{
     Set(int data_size, double** point_vals);
 
     Set(int data_size, Point* points);
+
+    Set(std::vector<Point> points);
 };
 
 #endif

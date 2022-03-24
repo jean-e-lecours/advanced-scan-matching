@@ -12,7 +12,7 @@ int KdTree::dims = 2;
 
 int main(){
     //Parameters that would be set on ROS
-    int max_guesses = 100;
+    int max_guesses = 5;
     double correntropy_factor = 0.1;
     double transform_tresh = 0.00001;
 
@@ -23,29 +23,30 @@ int main(){
     double transform_diff = INFINITY;
     //This will serve as an initializer and a way to keep track of the total transforms
     Transform2D total_transform(0, 0, 0);
-    Transform2D base_transform(0, 0, 0);
-    Transform2D true_transform(0, 0, 0.6);
+    Transform2D base_transform(1, 0.5, -0.3);
+    Transform2D true_transform(0, 0, 0.01);
 
     start = clock();
+
+    //Info we would get from the occupancy grid is used
+    TextMapData text_map_data;
+    text_map_data.read_from_file("dat/test_dat/test_map.txt", 100, 100, 0.025);
 
     //Info we would get from the laser scan message
     double scan_period = (2*M_PI)/360;
     TextLaserScanData laser_scan_1(false);
-    laser_scan_1.read_from_file("dat/test_dat/test_3_1.txt");
-    //TextLaserScanData laser_scan_2(false);
-    //laser_scan_2.read_from_file("incl/test_dat/test_3_2.txt");
-    
+    laser_scan_1.read_from_file("dat/test_dat/test_4_2.txt");
     
     //Will need something to interpret the laser scan message
     int data_size = laser_scan_1.usable_las_size;
     //laser_scan_1.filter_scan_points();
 
-    Set model_set = laser_scan_1.map_scan_points(&base_transform, scan_period);
+    Set model_set = *text_map_data.map_set->copy_set();
     Set data_set = laser_scan_1.map_scan_points(&base_transform, scan_period);
 
-    true_transform.transform_set(&data_set);
-
     Plot2D plot(true, max_guesses);
+
+    true_transform.transform_set(&model_set);
 
     KdTree model_tree(&model_set);
     model_set.print_set();
@@ -71,11 +72,12 @@ int main(){
         for (int i = 0; i < data_size; i++){
             corrs[i] = Correlation(&model_tree, &data_set, i, &guess_transform);
             corr_mean += corrs[i].corrected_value;
-            if (guesses > 13){
+            if (guesses > 3){
                 plot.add_line(corrs[i].model_corr_1, &corrs[i].current_point);
             }
             //plot.add_line(corrs[i].model_corr_1, &corrs[i].current_point);
         }
+
         std::cout << guesses << '\n';
         corr_mean = corr_mean/data_size;
         plot.add_data(&data_set);

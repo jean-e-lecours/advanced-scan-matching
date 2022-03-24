@@ -2,6 +2,7 @@
 #define ASM_H
 
 #include <iostream>
+#include <string>
 #include <vector>
 #include <fstream>
 
@@ -73,6 +74,16 @@ class TextLaserScanData{
         void filter_scan_points();
 
         TextLaserScanData(bool file_permanence);
+};
+
+class TextMapData{
+    bool done = false;
+
+    public:
+        Set* map_set;
+        int number_of_points;
+
+        int read_from_file(std::string filename, int size_x, int size_y, double pix_res);
 };
 
 double* make_g_vector(Correlation* corrs, Set* data_set, double std_dev, double correntropy_factor, int data_size, bool print);
