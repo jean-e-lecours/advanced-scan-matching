@@ -1,1 +1,1 @@
-plot "dat/temp2d_0.dat"
+plot "temp2d_0.dat","temp2d_1.dat","temp2d_2.dat"

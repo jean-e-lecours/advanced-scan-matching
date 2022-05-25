@@ -1,3 +1,4 @@
+#include <cmath>
 #include <iostream>
 #include <ctime>
 #include <vector>
@@ -9,12 +10,13 @@
 #include "incl/test.hpp"
 
 #include "incl/asm.hpp"
+#include "incl/hdsm.hpp"
 
 enum alg {LSSM = 0, HDSM = 1, ASM = 2};
 
 int main(int, char**) {
 
-    char algorithm = ASM;
+    char algorithm = HDSM;
 
     TextData scan_data;
     if (!scan_data.read_from_file("../dat/test_5.txt")){
@@ -26,7 +28,7 @@ int main(int, char**) {
         map_data.read_from_file("dat/test_map.txt");
     }
 
-    Transform2D las_transform(2,0,0.3);
+    Transform2D las_transform(0,0,0);
     Transform2D map_transform(0,0,0.01);
 
     clock_t start, end;
@@ -48,7 +50,9 @@ int main(int, char**) {
     Transform2D guess_transf(0,0,0);
     Transform2D total_transf(0,0,0);
 
-    for (int i = 0; i < 5; i++){
+    bool hdt_done = false;
+
+    for (int i = 0; i < 50; i++){
 
         guess_transf.transform(las_vec);
         total_transf.add_transform(guess_transf);
@@ -67,10 +71,62 @@ int main(int, char**) {
                 break;
             }
             case HDSM:{
-                for (int i = 0; i < correlations.size(); i++){
+
+                if (!hdt_done){
+                    double tgrad_step = 0.1;
+                    std::vector<Transform2D> tgrad_transfs {Transform2D(-tgrad_step, tgrad_step, 0),  Transform2D(0, tgrad_step, 0),  Transform2D(tgrad_step, tgrad_step, 0),\
+                                                        Transform2D(-tgrad_step, 0, 0),          Transform2D(0, 0, 0),          Transform2D(tgrad_step, 0, 0),\
+                                                        Transform2D(-tgrad_step, -tgrad_step, 0), Transform2D(0, -tgrad_step, 0), Transform2D(tgrad_step, -tgrad_step, 0)};
+                    //Translation only step conducted first
+                    int transf_ind;
+                    double best_hd = INFINITY;
+                    double new_hd;
+                    for (int t = 0; t < tgrad_transfs.size(); t++){
+                        new_hd = find_hd(correlations, tgrad_transfs[t], 5);
+                        if (new_hd < best_hd){
+                            best_hd = new_hd;
+                            transf_ind = t;
+                        }
+                    }
+                    if (transf_ind == 4){
+                        std::cout << "As good as it gets for translation!\n";
+                        hdt_done = true;
+                        break;
+                    }
+                    guess_transf = tgrad_transfs[transf_ind];
                     
+                    continue;
                 }
-                break;
+                else{
+                    double agrad_step = 0.01;
+
+                    std::vector<Transform2D> agrad_transfs {Transform2D(0, 0, -agrad_step), Transform2D(0, 0, 0), Transform2D(0, 0, agrad_step)};
+
+                    //Rotation only step conducted after
+                    int transf_ind;
+                    double best_hd = INFINITY;
+                    double new_hd;
+                    for (int t = 0; t < agrad_transfs.size(); t++){
+                        new_hd = find_hd(correlations, agrad_transfs[t], 50);
+                        if (new_hd < best_hd){
+                            best_hd = new_hd;
+                            transf_ind = t;
+                        }
+                    }
+                    if (transf_ind == 1){
+                        std::cout << "As good as it gets for rotation!\n";
+                        hdt_done = true;
+                        break;
+                    }
+                    guess_transf = agrad_transfs[transf_ind];
+                    
+                    continue;
+                }
+
+               
+                
+
+                
             }
             case ASM:{
                 corr_mean = corr_mean/correlations.size();
@@ -103,7 +159,7 @@ int main(int, char**) {
         }
     }
         
-    
+    plot.add_data(las_vec);
     plot.plot_data();
 
     end = clock();
