@@ -1,1 +1,0 @@
-/bin/clang++-10  -isystem /opt/ros/noetic/include/** -g  -rdynamic CMakeFiles/better-scan-matching.dir/main.cpp.o  -o better-scan-matching 

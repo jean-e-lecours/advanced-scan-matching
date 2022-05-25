@@ -1,2 +1,0 @@
-/bin/ar qc libpsr.a  CMakeFiles/psr.dir/src/psr.cpp.o
-/bin/ranlib libpsr.a
