@@ -1,0 +1,27 @@
+[
+{
+  "directory": "/home/jean/Code/Cmake/better-scan-matching/build",
+  "command": "/usr/bin/clang++ -g -std=gnu++17 -o CMakeFiles/tester.dir/src/test.cpp.o -c /home/jean/Code/Cmake/better-scan-matching/src/test.cpp",
+  "file": "/home/jean/Code/Cmake/better-scan-matching/src/test.cpp"
+},
+{
+  "directory": "/home/jean/Code/Cmake/better-scan-matching/build",
+  "command": "/usr/bin/clang++ -g -std=gnu++17 -o CMakeFiles/psr.dir/src/psr.cpp.o -c /home/jean/Code/Cmake/better-scan-matching/src/psr.cpp",
+  "file": "/home/jean/Code/Cmake/better-scan-matching/src/psr.cpp"
+},
+{
+  "directory": "/home/jean/Code/Cmake/better-scan-matching/build",
+  "command": "/usr/bin/clang++ -g -std=gnu++17 -o CMakeFiles/kdt.dir/src/kdt.cpp.o -c /home/jean/Code/Cmake/better-scan-matching/src/kdt.cpp",
+  "file": "/home/jean/Code/Cmake/better-scan-matching/src/kdt.cpp"
+},
+{
+  "directory": "/home/jean/Code/Cmake/better-scan-matching/build",
+  "command": "/usr/bin/clang++ -g -std=gnu++17 -o CMakeFiles/asm.dir/src/asm.cpp.o -c /home/jean/Code/Cmake/better-scan-matching/src/asm.cpp",
+  "file": "/home/jean/Code/Cmake/better-scan-matching/src/asm.cpp"
+},
+{
+  "directory": "/home/jean/Code/Cmake/better-scan-matching/build",
+  "command": "/usr/bin/clang++ -g -std=gnu++17 -o CMakeFiles/bsm.dir/main.cpp.o -c /home/jean/Code/Cmake/better-scan-matching/main.cpp",
+  "file": "/home/jean/Code/Cmake/better-scan-matching/main.cpp"
+}
+]

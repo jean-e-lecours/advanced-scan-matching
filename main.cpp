@@ -1,138 +1,115 @@
-#include <cmath>
+#include <iostream>
 #include <ctime>
-#include <string>
+#include <vector>
+#include <math.h>
+#include <iomanip>
 
-#include "hdr/mat.hpp"
-#include "hdr/asm_extra.hpp"
-#include "hdr/cpplot.hpp"
+#include "incl/kdt.hpp"
+#include "incl/psr.hpp"
+#include "incl/test.hpp"
 
-int Point::dims = 2;
-int Set::dims = 2;
-int KdTree::dims = 2;
+#include "incl/asm.hpp"
 
-int main(){
-    //Parameters that would be set on ROS
-    int max_guesses = 5;
-    double correntropy_factor = 0.1;
-    double transform_tresh = 0.00001;
+enum alg {LSSM = 0, HDSM = 1, ASM = 2};
+
+int main(int, char**) {
+
+    char algorithm = ASM;
+
+    TextData scan_data;
+    if (!scan_data.read_from_file("../dat/test_5.txt")){
+        scan_data.read_from_file("dat/test_5.txt");
+    }
+
+    TextData map_data;
+    if (!map_data.read_from_file("../dat/test_map.txt")){
+        map_data.read_from_file("dat/test_map.txt");
+    }
+
+    Transform2D las_transform(2,0,0.3);
+    Transform2D map_transform(0,0,0.01);
 
     clock_t start, end;
-    
-    //Parameters we just need initialized
-    int guesses = 0;
-    double transform_diff = INFINITY;
-    //This will serve as an initializer and a way to keep track of the total transforms
-    Transform2D total_transform(0, 0, 0);
-    Transform2D base_transform(1, 0.5, -0.3);
-    Transform2D true_transform(0, 0, 0.01);
 
     start = clock();
 
-    //Info we would get from the occupancy grid is used
-    TextMapData text_map_data;
-    text_map_data.read_from_file("dat/test_dat/test_map.txt", 100, 100, 0.025);
+    std::vector<Point2D> las_vec = map_scan_points(las_transform, scan_data.dat_vec, 2*M_PI/360);
 
-    //Info we would get from the laser scan message
-    double scan_period = (2*M_PI)/360;
-    TextLaserScanData laser_scan_1(false);
-    laser_scan_1.read_from_file("dat/test_dat/test_4_2.txt");
-    
-    //Will need something to interpret the laser scan message
-    int data_size = laser_scan_1.usable_las_size;
-    //laser_scan_1.filter_scan_points();
+    std::vector<Point2D> map = make_map(map_data.dat_vec, 100, 100, 0.025);
 
-    Set model_set = *text_map_data.map_set->copy_set();
-    Set data_set = laser_scan_1.map_scan_points(&base_transform, scan_period);
+    map_transform.transform(map);
 
-    Plot2D plot(true, max_guesses);
+    KdTree map_kdt(map);
 
-    true_transform.transform_set(&model_set);
+    Plot2D plot(true);
+    plot.add_data(las_vec);
+    plot.add_data(map);
 
-    KdTree model_tree(&model_set);
-    model_set.print_set();
+    Transform2D guess_transf(0,0,0);
+    Transform2D total_transf(0,0,0);
 
-    Transform2D guess_transform(0, 0, 0);
+    for (int i = 0; i < 5; i++){
 
-    //Get first and second correlations in data set to model set
+        guess_transf.transform(las_vec);
+        total_transf.add_transform(guess_transf);
 
-    plot.add_data(&model_set);
-    plot.add_data(&data_set);
-
-
-    while (transform_diff > transform_tresh && guesses < max_guesses){
-
-        //Apply guess transform on the set and add it to the total transform
-        //The guess transform is with respect to the previous guess
-        guess_transform.transform_set(&data_set);
-        total_transform.add_transform(&guess_transform);
-
-        Correlation* corrs = new Correlation[data_size];
-        //Get correlation between points and average for the standard deviation
+        std::vector<Correlation> correlations;
         double corr_mean = 0;
-        for (int i = 0; i < data_size; i++){
-            corrs[i] = Correlation(&model_tree, &data_set, i, &guess_transform);
-            corr_mean += corrs[i].corrected_value;
-            if (guesses > 3){
-                plot.add_line(corrs[i].model_corr_1, &corrs[i].current_point);
+        double corr_stdev = 0;
+
+        for (int i = 0; i < las_vec.size(); i++){
+            Correlation corr(map_kdt, las_vec[i], THOROUGH, las_transform);
+            corr_mean += corr.corrected_value;
+            correlations.push_back(corr);
+        }
+        switch (algorithm) {
+            case LSSM:{
+                break;
             }
-            //plot.add_line(corrs[i].model_corr_1, &corrs[i].current_point);
+            case HDSM:{
+                for (int i = 0; i < correlations.size(); i++){
+                    
+                }
+                break;
+            }
+            case ASM:{
+                corr_mean = corr_mean/correlations.size();
+
+                for (int i = 0; i < correlations.size(); i++){
+                    corr_stdev += std::abs(correlations[i].corrected_value - corr_mean);
+                }
+                corr_stdev = sqrt(corr_stdev/correlations.size());
+                std::cout << corr_stdev << '\n';
+
+                std::vector<double> g = make_g_vector(correlations, las_vec, corr_stdev, 0.1, false);
+                std::vector<double> G = make_G_matrix(correlations, las_vec, corr_stdev, 0.1, false);
+                std::vector<double> x = solve_system(g, G, false);
+
+                guess_transf.update_transform(x);
+                
+                if (!guess_transf.is_significant(0.001)){
+                    guess_transf.print_transform();
+
+                    plot.add_data(las_vec);
+                    plot.add_corrs(correlations, SINGLE);
+                    break;
+                }
+
+                guess_transf.print_transform();
+
+                plot.add_data(las_vec);
+                plot.add_corrs(correlations, SINGLE);
+            }
         }
-
-        std::cout << guesses << '\n';
-        corr_mean = corr_mean/data_size;
-        plot.add_data(&data_set);
-
-        //Calculate the standard deviation of the corrected value estimate
-        double std_dev = 0;
-        for (int i = 0; i < data_size; i++){
-            std_dev += std::abs(corrs[i].corrected_value - corr_mean);
-        }
-        std_dev = sqrt(std_dev/data_size);
-
-        //For two dimensions, g is a 1x6 vector and G is a 6x6 matrix
-        double* g = make_g_vector(corrs, &data_set, std_dev, correntropy_factor, data_size, false);
-        double* G = make_G_matrix(corrs, &data_set, std_dev, correntropy_factor, data_size, false);
-        //Solve the system using gaussian elimination
-        //TODO: skip or/and error message on receiving unsolvable system
-        double* x = solve_system(g, G, false);
-
-        //Evaluate difference and update guess Transform2D and update
-        transform_diff = guess_transform.compare_transform(x);
-        guess_transform.update_transform(x);
-
-        std::cout << "Guessed translation of: " << guess_transform.trans_vec[0] << ", " << guess_transform.trans_vec[1] << '\n';
-        guesses++;
     }
-    guess_transform.transform_set(&data_set);
-    total_transform.add_transform(&guess_transform);
-    plot.add_data(&data_set);
-
-    double angle = std::atan2(total_transform.rot_mat[2],total_transform.rot_mat[0]);
+        
     
+    plot.plot_data();
 
-    Transform2D simple_transform(total_transform.trans_vec[0],total_transform.trans_vec[1],angle);
-    simple_transform.print_transform();
-    std::cout << angle << '\n';
-
-    /* double* AtA = affine_to_rot(total_transform.rot_mat, dimensions, true);
-
-    Transform2D test_transform(total_transform.trans_vec[0],total_transform.trans_vec[1],0);
-    test_transform.rot_mat[0] = AtA[0];
-    test_transform.rot_mat[1] = AtA[1];
-    test_transform.rot_mat[2] = AtA[2];
-    test_transform.rot_mat[3] = AtA[3];
-    double angle2 = std::atan2(test_transform.rot_mat[2],test_transform.rot_mat[0]);
-    //This is a transform with a proper rotation matrix
-    test_transform.print_transform();
-    std::cout << angle2 << '\n'; */
-    //TODO: adjust translation vector for the new proper rotation matrix
-
-
-    std::cout << "Final transform is:\n";
-    total_transform.print_transform();
     end = clock();
+
     double time_taken = double(end-start) / double(CLOCKS_PER_SEC);
     std::cout << "Time for execution: " << time_taken << "s\n";
-    plot.plot_data();
+
     return 0;
 }

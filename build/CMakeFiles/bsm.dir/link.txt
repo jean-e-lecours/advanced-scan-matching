@@ -1,0 +1,1 @@
+/bin/clang++-10  -isystem /opt/ros/noetic/include/** -g  -rdynamic CMakeFiles/bsm.dir/main.cpp.o  -o bsm  libtester.a libpsr.a 

@@ -1,0 +1,34 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/jean/Code/Cmake/better-scan-matching/incl/psr.hpp
+iostream
+-
+vector
+-
+
+/home/jean/Code/Cmake/better-scan-matching/incl/test.hpp
+cmath
+-
+string
+-
+vector
+-
+psr.hpp
+/home/jean/Code/Cmake/better-scan-matching/incl/psr.hpp
+
+/home/jean/Code/Cmake/better-scan-matching/main.cpp
+iostream
+-
+vector
+-
+incl/psr.hpp
+/home/jean/Code/Cmake/better-scan-matching/incl/psr.hpp
+incl/test.hpp
+/home/jean/Code/Cmake/better-scan-matching/incl/test.hpp
+
