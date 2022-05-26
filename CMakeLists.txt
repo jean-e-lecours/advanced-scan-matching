@@ -9,6 +9,7 @@ add_library(kdt STATIC incl/kdt.hpp src/kdt.cpp)
 
 add_library(asm STATIC incl/asm.hpp src/asm.cpp)
 add_library(hdsm STATIC incl/hdsm.hpp src/hdsm.cpp)
+add_library(lssm STATIC incl/lssm.hpp src/lssm.cpp)
 
 
 include(CTest)
@@ -22,6 +23,7 @@ target_link_libraries(bsm PRIVATE kdt)
 
 target_link_libraries(bsm PRIVATE asm)
 target_link_libraries(bsm PRIVATE hdsm)
+target_link_libraries(bsm PRIVATE lssm)
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})

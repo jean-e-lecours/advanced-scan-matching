@@ -6,6 +6,7 @@
 #include <iomanip>
 
 #include "incl/kdt.hpp"
+#include "incl/lssm.hpp"
 #include "incl/psr.hpp"
 #include "incl/test.hpp"
 
@@ -16,7 +17,7 @@ enum alg {LSSM = 0, HDSM = 1, ASM = 2};
 
 int main(int, char**) {
 
-    char algorithm = HDSM;
+    char algorithm = LSSM;
 
     TextData scan_data;
     if (!scan_data.read_from_file("../dat/test_5.txt")){
@@ -52,7 +53,7 @@ int main(int, char**) {
 
     bool hdt_done = false;
 
-    for (int i = 0; i < 50; i++){
+    for (int i = 0; i < 5; i++){
 
         guess_transf.transform(las_vec);
         total_transf.add_transform(guess_transf);
@@ -68,7 +69,25 @@ int main(int, char**) {
         }
         switch (algorithm) {
             case LSSM:{
-                break;
+                std::vector<double> g = lssm::make_g_vector(correlations, las_vec, false);
+                std::vector<double> M = lssm::make_M_matrix(correlations, las_vec, false);
+                std::vector<double> x = lssm::solve_system(g, M, false);
+                
+                lssm::update_transform(guess_transf, x);
+                
+                if (!guess_transf.is_significant(0.001)){
+                    guess_transf.print_transform();
+
+                    plot.add_data(las_vec);
+                    plot.add_corrs(correlations, SINGLE);
+                    break;
+                }
+
+                guess_transf.print_transform();
+
+                plot.add_data(las_vec);
+                //plot.add_corrs(correlations, SINGLE);
+                continue;
             }
             case HDSM:{
 
@@ -122,11 +141,6 @@ int main(int, char**) {
                     
                     continue;
                 }
-
-               
-                
-
-                
             }
             case ASM:{
                 corr_mean = corr_mean/correlations.size();
@@ -143,7 +157,8 @@ int main(int, char**) {
 
                 guess_transf.update_transform(x);
                 
-                if (!guess_transf.is_significant(0.001)){
+                if (!guess_transf.is_significant(0.01)){
+                    std::cout << "No longer significant...\n";
                     guess_transf.print_transform();
 
                     plot.add_data(las_vec);
@@ -155,6 +170,7 @@ int main(int, char**) {
 
                 plot.add_data(las_vec);
                 plot.add_corrs(correlations, SINGLE);
+                continue;
             }
         }
     }
