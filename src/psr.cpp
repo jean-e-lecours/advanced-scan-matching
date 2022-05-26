@@ -126,7 +126,7 @@ std::vector<Point2D> make_map(std::vector<double> map_vec, int grid_size_x, int 
     for (int i = 0; i < map_vec.size(); i++){
         if (map_vec[i] > 0){
             double point_x = pix_res * (i%grid_size_y);
-            double point_y = pix_res * (i/grid_size_x);
+            double point_y = pix_res * (int)(i/grid_size_x);
             Point2D map_point(point_x, point_y);
             map.push_back(map_point);
         }
