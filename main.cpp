@@ -17,7 +17,9 @@ enum alg {LSSM = 0, HDSM = 1, ASM = 2};
 
 int main(int, char**) {
 
-    char algorithm = LSSM;
+    char algorithm = ASM;
+    int max_guesses = 5;
+    double threshold = 0.01;
 
     TextData scan_data;
     if (!scan_data.read_from_file("../dat/test_5.txt")){
@@ -29,8 +31,8 @@ int main(int, char**) {
         map_data.read_from_file("dat/test_map.txt");
     }
 
-    Transform2D las_transform(0,0,0);
-    Transform2D map_transform(0,0,0.01);
+    Transform2D las_transform(2,0,0.3);
+    Transform2D map_transform(0,0,0);
 
     clock_t start, end;
 
@@ -45,16 +47,14 @@ int main(int, char**) {
     KdTree map_kdt(map);
 
     Plot2D plot(true);
-    plot.add_data(las_vec);
     plot.add_data(map);
 
     Transform2D guess_transf(0,0,0);
     Transform2D total_transf(0,0,0);
 
     bool hdt_done = false;
-
-    for (int i = 0; i < 5; i++){
-
+    int guesses = 0;
+    do{
         guess_transf.transform(las_vec);
         total_transf.add_transform(guess_transf);
 
@@ -156,26 +156,17 @@ int main(int, char**) {
                 std::vector<double> x = solve_system(g, G, false);
 
                 guess_transf.update_transform(x);
-                
-                if (!guess_transf.is_significant(0.01)){
-                    std::cout << "No longer significant...\n";
-                    guess_transf.print_transform();
-
-                    plot.add_data(las_vec);
-                    plot.add_corrs(correlations, SINGLE);
-                    break;
-                }
-
                 guess_transf.print_transform();
 
                 plot.add_data(las_vec);
                 plot.add_corrs(correlations, SINGLE);
+                guesses++;
                 continue;
             }
         }
-    }
         
-    plot.add_data(las_vec);
+    } while(guess_transf.is_significant(threshold) && guesses < max_guesses);
+    
     plot.plot_data();
 
     end = clock();
