@@ -99,6 +99,15 @@ bool Transform2D::is_significant(double threshold){
 
 }
 
+double Correlation::get_distance(){
+    return sqrt((scan.x - mcor1.x) * (scan.x - mcor1.x) + (scan.y - mcor1.y) * (scan.y - mcor1.y));
+}
+
+std::vector<double> Correlation::get_trans(){
+    std::vector<double> trans = {scan.x - mcor1.x,scan.y - mcor1.y};
+    return trans;
+}
+
 Correlation::Correlation(KdTree& map_kdt, Point2D& scan_point, char corr_type, Transform2D& g_transf){
     scan = scan_point;
     std::vector<int> ids = map_kdt.find_closest_point(scan_point, 0, corr_type);

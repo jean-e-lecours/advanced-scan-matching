@@ -35,7 +35,10 @@ class Correlation{
 
         std::vector<double> norm = {0,0};
         double corrected_value;
+        
+        double get_distance();
 
+        std::vector<double> get_trans();
 
         Correlation(KdTree& map_kdt, Point2D& scan_point, char corr_type, Transform2D& g_transf);
 };
