@@ -29,7 +29,7 @@ int main(int, char**) {
     if (!scan_data.read_from_file("../dat/test_6.txt")){
         scan_data.read_from_file("dat/test_6.txt");
     }
-    //comment
+    //commentddd
     TextData map_data;
     if (!map_data.read_from_file("../dat/test_map.txt")){
         map_data.read_from_file("dat/test_map.txt");
