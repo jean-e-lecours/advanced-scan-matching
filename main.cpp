@@ -26,8 +26,8 @@ int main(int, char**) {
     double threshold = 0.001;
 
     TextData scan_data;
-    if (!scan_data.read_from_file("../dat/test_6.txt")){
-        scan_data.read_from_file("dat/test_6.txt");
+    if (!scan_data.read_from_file("../dat/test_1.txt")){
+        scan_data.read_from_file("dat/test_1.txt");
     }
     //commentddddd
     TextData map_data;
@@ -35,7 +35,7 @@ int main(int, char**) {
         map_data.read_from_file("dat/test_map.txt");
     }
 
-    Transform2D las_transform(2,0.7,1.5);
+    Transform2D las_transform(0.3,0.3,0);
     Transform2D map_transform(0,0,0);
 
     clock_t start, end;
@@ -53,6 +53,7 @@ int main(int, char**) {
 
     Plot2D plot(true);
     plot.add_data(map);
+    plot.add_data(las_vec);
 
     Transform2D guess_transf(0,0,0);
     Transform2D total_transf(0,0,0);
@@ -60,9 +61,11 @@ int main(int, char**) {
 
     bool hdt_done = false;
     int guesses = 0;
+
+    guess_transf.transform(las_vec);
+    total_transf.add_transform(guess_transf);
     do{
-        guess_transf.transform(las_vec);
-        total_transf.add_transform(guess_transf);
+        
 
         correlations.clear();
         double corr_mean = 0;
@@ -86,114 +89,67 @@ int main(int, char**) {
         std::vector<double> x = solve_system(g, G, false);
 
         guess_transf.update_transform(x);
-        double angle = std::atan2(guess_transf.rot_mat[2],guess_transf.rot_mat[0]);
-        Transform2D rigid_transf(guess_transf.trans_vec[0], guess_transf.trans_vec[1], angle);
-        guess_transf = rigid_transf;
         guess_transf.print_transform();
+        
 
-        plot.add_data(las_vec);
-        if (guesses == 4){
-            plot.add_corrs(correlations, SINGLE);
-        }
+        guess_transf.transform(las_vec);
+        total_transf.add_transform(guess_transf);
+        //plot.add_data(las_vec);
         
         guesses++;
         continue;
         
     } while(guess_transf.is_significant(threshold) && guesses < max_guesses);
-    
 
-    double score = 0;
-    int sig_dist = 0;
-    std::vector<double> sig_vec = {0,0};
-    for (int i = 0; i < correlations.size(); i++){
-        double dist = correlations[i].get_distance();
-        score += dist;
-        if (dist > 1.5*map_res){
-            sig_vec[0] += correlations[i].scan.x - correlations[i].mcor1.x;
-            sig_vec[1] += correlations[i].scan.y - correlations[i].mcor1.y;
-            sig_dist++;
-        }
-    }
-    sig_vec[0] = sig_vec[0]/correlations.size();
-    sig_vec[1] = sig_vec[1]/correlations.size();
-    total_transf.print_transform();
-    std::cout << "Affine distance score is: " << score << '\n';
-    std::cout << sig_dist << " significant distances, consensus around " << sig_vec[0] << ", "<< sig_vec[1] << "\n";
-
-    /* if (abs(sig_vec[0]) > map_res || sig_vec[1] > map_res){
-        std::cout << "Correcting translation...\n";
-        Transform2D sig_correct(-sig_vec[0], -sig_vec[1],0);
-        sig_correct.transform(las_vec);
-        plot.add_data(las_vec);
-    }
+    plot.add_corrs(correlations, SINGLE);
 
     correlations.clear();
-        double corr_mean = 0;
-        double corr_stdev = 0;
-
-        for (int i = 0; i < las_vec.size(); i++){
-            Correlation corr(map_kdt, las_vec[i], THOROUGH, guess_transf);
-            corr_mean += corr.corrected_value;
-            correlations.push_back(corr);
-        }
-
-    score = 0;
-    sig_dist = 0;
-    sig_vec = {0,0};
+    for (int i = 0; i < las_vec.size(); i++){
+        Correlation corr(map_kdt, las_vec[i], THOROUGH, guess_transf);
+        correlations.push_back(corr);
+    }
+    std::vector<double> sig_vec;
     for (int i = 0; i < correlations.size(); i++){
-        double dist = correlations[i].get_distance();
-        score += dist;
-        if (dist > 1.5*map_res){
-            sig_vec[0] += correlations[i].scan.x - correlations[i].mcor1.x;
-            sig_vec[1] += correlations[i].scan.y - correlations[i].mcor1.y;
-            sig_dist++;
-        }
+        sig_vec.push_back(correlations[i].get_distance());
     }
-    sig_vec[0] = sig_vec[0]/correlations.size();
-    sig_vec[1] = sig_vec[1]/correlations.size();
+
+    double angle = std::atan2(total_transf.rot_mat[2],total_transf.rot_mat[0]);
+    Transform2D rigid_transf(total_transf.trans_vec[0], total_transf.trans_vec[1], angle);
+    total_transf = rigid_transf;
     total_transf.print_transform();
-    std::cout << "Affine distance score is: " << score << '\n';
-    std::cout << sig_dist << " significant distances, consensus around " << sig_vec[0] << ", "<< sig_vec[1] << "\n"; */
+    total_transf.transform(pure_las_vec);
 
-
-
-    if (trans){
-        correlations.clear();
-        double angle = std::atan2(total_transf.rot_mat[2],total_transf.rot_mat[0]);
-        Transform2D rigid_transf(total_transf.trans_vec[0], total_transf.trans_vec[1], angle);
-        Transform2D pure_trans(0,0,0);
-        
-        Transform2D trans_correction(0,0,0);
-
-        rigid_transf.transform(pure_las_vec);
-        do{
-            std::vector<double> mean_trans = {0,0};
-            correlations.clear();
-            for (int i = 0; i < pure_las_vec.size(); i++){
-                Correlation corr(map_kdt, pure_las_vec[i], THOROUGH, pure_trans);
-                std::vector<double> temp_trans = corr.get_trans();
-                mean_trans[0] -= temp_trans[0];
-                mean_trans[1] -= temp_trans[1];
-                correlations.push_back(corr);
-            }
-
-            trans_correction.trans_vec[0] = mean_trans[0]/correlations.size();
-            trans_correction.trans_vec[1] = mean_trans[1]/correlations.size();
-
-            trans_correction.transform(pure_las_vec);
-            rigid_transf.add_transform(trans_correction);
-            
-        }while(trans_correction.is_significant(0.001));
-
-        plot.add_data(pure_las_vec);
-         
-        score = 0;
-        for (int i = 0; i < correlations.size(); i++){
-            score += correlations[i].get_distance();
-        }
-        rigid_transf.print_transform();
-        std::cout << "Rigid distance score is: " << score << '\n';
+    correlations.clear();
+    for (int i = 0; i < las_vec.size(); i++){
+        Correlation corr(map_kdt, pure_las_vec[i], THOROUGH, guess_transf);
+        correlations.push_back(corr);
     }
+    plot.add_data(pure_las_vec);
+    plot.add_corrs(correlations, SINGLE);
+
+    std::vector<double> corr_trans = {0,0};
+    std::vector<Point2D> sig_points;
+
+    int sig_dist = 0;
+    for (int i = 0; i < correlations.size(); i++){
+        double new_dist = correlations[i].get_distance();
+        if (sig_vec[i] < map_res && new_dist > map_res ){
+            sig_points.push_back(correlations[i].scan);
+            sig_dist++;
+            corr_trans[0] += abs(correlations[i].scan.x - correlations[i].mcor1.x);
+            corr_trans[1] += abs(correlations[i].scan.y - correlations[i].mcor1.y);
+        }
+    }
+    corr_trans[0] = corr_trans[0]/sig_dist;
+    corr_trans[1] = corr_trans[1]/sig_dist;
+    Transform2D add_transf(corr_trans[0],corr_trans[1],0);
+    add_transf.transform(pure_las_vec);
+    plot.add_data(sig_points);
+    plot.add_data(pure_las_vec);
+    total_transf.add_transform(add_transf);
+    total_transf.print_transform();
+    //std::cout << "Affine distance score is: " << score << '\n';
+    std::cout << sig_dist << " significant distances, consensus around " << corr_trans[0] << ", "<< corr_trans[1] << "\n";
 
     end = clock();
     double time_taken = double(end-start) / double(CLOCKS_PER_SEC);
