@@ -11,7 +11,7 @@
 
 void Plot2D::add_data(std::vector<Point2D>& data_points){
     //Add file name to the array and create the file itself
-    std::string filename = "temp2d_" + std::to_string(number_of_plots)+ ".dat";
+    std::string filename = this->file_header + std::to_string(number_of_plots)+ ".dat";
     filenames.push_back(filename);
 
     std::ofstream osetf(filename);
@@ -34,6 +34,37 @@ void Plot2D::add_data(std::vector<Point2D>& data_points){
         }
         //This is where we actually place the data into the file
         osetf << data_points[i].x << ' ' << data_points[i].y << '\n';
+    }
+    number_of_plots++;
+    gnup_line += "\"" + filename + "\",";
+    osetf.close();
+}
+
+void Plot2D::add_vec_data_2d(std::vector<std::vector<double>>& data_points){
+    //Add file name to the array and create the file itself
+    std::string filename = this->file_header + std::to_string(number_of_plots)+ ".dat";
+    filenames.push_back(filename);
+
+    std::ofstream osetf(filename);
+    //Go through all the data to find what is the maximum and minimum in x
+    //and y so that we can size the plot window properly. This is not
+    //necessary but we are going through all the data anyways so why not.
+    int data_size = data_points.size();
+    for (int i = 0; i < data_size; i++){ 
+        if (data_points[i][0] < extremas[0]){
+            extremas[0] = data_points[i][0]; 
+        }
+        else if (data_points[i][0] > extremas[1]){
+            extremas[1] = data_points[i][0]; 
+        }
+        if (data_points[i][1] < extremas[2]){
+            extremas[2] = data_points[i][1]; 
+        }
+        else if (data_points[i][1] > extremas[3]){
+            extremas[3] = data_points[i][1];
+        }
+        //This is where we actually place the data into the file
+        osetf << data_points[i][0] << ' ' << data_points[i][1] << '\n';
     }
     number_of_plots++;
     gnup_line += "\"" + filename + "\",";
@@ -75,15 +106,16 @@ void Plot2D::plot_data(){
     gp.sendLine(gnup_range);
     gnup_line.erase(gnup_line.end() - 1);
 
-    std::ofstream gnup_file{"gnup_line"};
+    std::ofstream gnup_file{file_header + "gnup_line"};
     gnup_file << gnup_line << '\n';
     gnup_file.close();
 
     gp.sendLine(gnup_line);
 }
 
-Plot2D::Plot2D(bool keep_data){
+Plot2D::Plot2D(bool keep_data, std::string file_header){
     //Constructor
+    this->file_header = file_header;
     this->data_permanence = keep_data;
     this->number_of_plots = 0;
 }

@@ -16,10 +16,13 @@ class Plot2D{
     int number_of_plots;
 
     std::string gnup_line = "plot ";
+    std::string file_header = "";
     std::vector<std::string> filenames;
 
     public:
         void add_data(std::vector<Point2D>& data_points);
+
+        void add_vec_data_2d(std::vector<std::vector<double>>& data_points);
 
         void add_line(Point2D& point1, Point2D& point2);
 
@@ -27,7 +30,7 @@ class Plot2D{
         
         void plot_data();
 
-        Plot2D(bool keep_data);
+        Plot2D(bool keep_data, std::string file_header);
     
     ~Plot2D();
 };
