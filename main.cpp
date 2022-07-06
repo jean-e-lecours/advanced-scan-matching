@@ -1,4 +1,5 @@
 #include <cmath>
+#include <complex>
 #include <iostream>
 #include <ctime>
 #include <unistd.h>
@@ -26,8 +27,8 @@ int main(int, char**) {
     double threshold = 0.001;
 
     TextData scan_data;
-    if (!scan_data.read_from_file("../dat/test_6.txt")){
-        scan_data.read_from_file("dat/test_6.txt");
+    if (!scan_data.read_from_file("../dat/test_11.txt")){
+        scan_data.read_from_file("dat/test_11.txt");
     }
     //commentddddd
     TextData map_data;
@@ -35,7 +36,7 @@ int main(int, char**) {
         map_data.read_from_file("dat/test_map.txt");
     }
 
-    Transform2D las_transform(2,0.5,1.5);
+    Transform2D las_transform(0.25,0.25,0);
     Transform2D map_transform(0,0,0);
 
     clock_t start, end;
@@ -72,7 +73,7 @@ int main(int, char**) {
             corr_mean += corr.corrected_value;
             correlations.push_back(corr);
         }
-        plot.add_corrs(correlations, SINGLE);
+        
         corr_mean = corr_mean/correlations.size();
 
         for (int i = 0; i < correlations.size(); i++){
@@ -86,48 +87,114 @@ int main(int, char**) {
 
         guess_transf.update_transform(x);
 
-        double angle = std::atan2(guess_transf.rot_mat[2],guess_transf.rot_mat[0]);
+        /* double angle = std::atan2(guess_transf.rot_mat[2],guess_transf.rot_mat[0]);
         Transform2D rigid_guess(guess_transf.trans_vec[0], guess_transf.trans_vec[1], angle);
 
-        guess_transf = rigid_guess;
-        guess_transf.print_transform();
+        guess_transf = rigid_guess; */
+
+        //Transforms stay affine for now
         total_transf.add_transform(guess_transf);
         
         guesses++; 
         
     } while(guess_transf.is_significant(threshold) && guesses < max_guesses);
-    total_transf.transform(las_vec);
+    plot.add_data(las_vec,total_transf);
 
-    plot.add_data(las_vec);
-
-    std::vector<std::vector<double>> sig_vec;
+    //Evaluate the distance between data and map points, remember the ones that are "converged"
+    std::vector<int> sig_ind;
     for (int i = 0; i < correlations.size(); i++){
-        sig_vec.push_back(correlations[i].get_trans());
-    }
-    Plot2D sig_plot(true, "densig_");
-    sig_plot.add_vec_data_2d(sig_vec);
-    sig_plot.plot_data();
 
-    std::vector<double> sig_trans = {0,0};
-    double sign_x;
-    double sign_y;
-    for (int i = 0; i < sig_vec.size(); i++){
-        if (std::abs(sig_vec[i][0]) > map_res){
-            sig_trans[0] += sig_vec[i][0];
-            sign_x ++;
-        }
-        if (std::abs(sig_vec[i][1]) > map_res){
-            sig_trans[1] += sig_vec[i][1];
-            sign_y ++;
+        if (correlations[i].get_distance() < map_res){
+            sig_ind.push_back(i);
         }
     }
-    sig_trans[0] = sig_trans[0]/sign_x;
-    sig_trans[1] = sig_trans[1]/sign_y;
+    //Project affine transform into SO2
+    double angle = std::atan2(total_transf.rot_mat[2],total_transf.rot_mat[0]);
+    Transform2D rigid_transf(total_transf.trans_vec[0], total_transf.trans_vec[1], angle);
 
-    Transform2D add_transf(-sig_trans[0], -sig_trans[1], 0);
-    total_transf.add_transform(add_transf);
-    add_transf.transform(las_vec);
-    plot.add_data(las_vec);
+    
+
+    //Make new correlations based on the rigid total transform
+    correlations.clear();
+    for (int i = 0; i < las_vec.size(); i++){
+        Correlation corr(map_kdt, las_vec[i], THOROUGH, rigid_transf);
+        correlations.push_back(corr);
+    }
+
+    plot.add_data(las_vec, rigid_transf);
+    plot.add_corrs(correlations, SINGLE);
+    //If data points that were converged are now away from the corresponding map point, consider moving
+    std::vector<double> sig_vec = {0,0};
+    int sig_count = 0;
+    double dist_score = 0;
+    for (int i = 0; i < sig_ind.size(); i++){
+        if (correlations[i].get_distance() > map_res){
+            //Using an average right now, may need a max value in the future
+            sig_vec[0] += correlations[i].get_trans()[0];
+            sig_vec[1] += correlations[i].get_trans()[1];
+            sig_count++;
+        }
+    }
+    sig_vec[0] = sig_vec[0]/sig_count;
+    sig_vec[1] = sig_vec[1]/sig_count;
+    std::cout << "Sig vec is: [" << sig_vec[0] << ", " << sig_vec[1] << "]\n";
+
+    //Use obtained sig vec as a maximum value for a bisection search
+    double bisec = sqrt(sig_vec[0]*sig_vec[0] + sig_vec[1]*sig_vec[1]);
+    std::cout << bisec << '\n';
+    Transform2D base_t = rigid_transf;
+    Transform2D far_t = rigid_transf;
+    std::vector<double> dist_vec = sig_vec;
+    far_t.trans_vec[0] -= dist_vec[0];
+    far_t.trans_vec[1] -= dist_vec[1];
+
+    //Evaluate both sides
+    double dist_score_base = 0;
+    double dist_score_far = 0;
+    for (int i = 0; i < sig_ind.size(); i++){
+        Correlation corr_base(map_kdt, las_vec[sig_ind[i]], THOROUGH, base_t);
+        dist_score_base += corr_base.get_distance();
+        Correlation corr_far(map_kdt, las_vec[sig_ind[i]], THOROUGH, far_t);
+        dist_score_far += corr_far.get_distance();
+    }
+
+    Transform2D mid_t = rigid_transf;
+    std::cout << "Entering bisection...\n";
+    while(bisec > map_res/2){
+        mid_t.trans_vec[0] = (base_t.trans_vec[0] + far_t.trans_vec[0])/2;
+        mid_t.trans_vec[1] = (base_t.trans_vec[1] + far_t.trans_vec[1])/2;
+        //Evaluate the middle
+        double dist_score_mid = 0;
+        for (int i = 0; i < sig_ind.size(); i++){
+            Correlation corr_mid(map_kdt, las_vec[sig_ind[i]], THOROUGH, mid_t);
+            dist_score_mid += corr_mid.get_distance();
+        }
+        if (dist_score_mid < dist_score_base && dist_score_mid > dist_score_far){
+            //Here the answer lies between mid and far, re-assign mid to base and try again
+            base_t = mid_t;
+            bisec = bisec/2;
+        }
+        else if (dist_score_mid > dist_score_base && dist_score_mid < dist_score_far){
+            //Here the answer lies between base and mid, re-assign far to mid and try again
+            far_t = mid_t;
+            bisec = bisec/2;
+        }
+        else if ((dist_score_mid < dist_score_base && dist_score_mid < dist_score_far) ||\
+         (dist_score_mid > dist_score_base && dist_score_mid > dist_score_far)){
+            //There are multiple minima in the range, need to pick the best one
+            if (dist_score_base < dist_score_far){
+                far_t = mid_t;
+                bisec = bisec/2;
+            }
+            else{
+                base_t = mid_t;
+                bisec = bisec/2;
+            }
+            break;
+        }
+    }
+    plot.add_data(las_vec, mid_t);
+
     end = clock();
     double time_taken = double(end-start) / double(CLOCKS_PER_SEC);
     std::cout << "Time for execution: " << time_taken << "s\n";

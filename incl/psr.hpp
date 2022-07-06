@@ -43,6 +43,8 @@ class Correlation{
         Correlation(KdTree& map_kdt, Point2D& scan_point, char corr_type, Transform2D& g_transf);
 };
 
+
+
 std::vector<Point2D> map_scan_points(Transform2D& transform, std::vector<double> las_vec, double scan_period);
 
 std::vector<Point2D> make_map(std::vector<double> map_vec, int grid_size_x, int grid_size_y, double pix_res);

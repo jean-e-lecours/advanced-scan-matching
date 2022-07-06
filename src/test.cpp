@@ -40,6 +40,39 @@ void Plot2D::add_data(std::vector<Point2D>& data_points){
     osetf.close();
 }
 
+void Plot2D::add_data(std::vector<Point2D>& data_points, Transform2D transform){
+    //Add file name to the array and create the file itself
+    std::string filename = this->file_header + std::to_string(number_of_plots)+ ".dat";
+    filenames.push_back(filename);
+
+    std::ofstream osetf(filename);
+    //Go through all the data to find what is the maximum and minimum in x
+    //and y so that we can size the plot window properly. This is not
+    //necessary but we are going through all the data anyways so why not.
+    int data_size = data_points.size();
+    for (int i = 0; i < data_size; i++){ 
+        if (data_points[i].x < extremas[0]){
+            extremas[0] = data_points[i].x; 
+        }
+        else if (data_points[i].x > extremas[1]){
+            extremas[1] = data_points[i].x; 
+        }
+        if (data_points[i].y < extremas[2]){
+            extremas[2] = data_points[i].y; 
+        }
+        else if (data_points[i].y > extremas[3]){
+            extremas[3] = data_points[i].y;
+        }
+        //This is where we actually place the data into the file
+        osetf << transform.rot_mat[0]*data_points[i].x + transform.rot_mat[1]*data_points[i].y + transform.trans_vec[0] << ' '\
+         << transform.rot_mat[2]*data_points[i].x + transform.rot_mat[3]*data_points[i].y + transform.trans_vec[1] << '\n';
+    }
+    number_of_plots++;
+    gnup_line += "\"" + filename + "\",";
+    osetf.close();
+}
+
+
 void Plot2D::add_vec_data_2d(std::vector<std::vector<double>>& data_points){
     //Add file name to the array and create the file itself
     std::string filename = this->file_header + std::to_string(number_of_plots)+ ".dat";

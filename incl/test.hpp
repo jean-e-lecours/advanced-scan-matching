@@ -21,6 +21,7 @@ class Plot2D{
 
     public:
         void add_data(std::vector<Point2D>& data_points);
+        void add_data(std::vector<Point2D>& data_points, Transform2D transform);
 
         void add_vec_data_2d(std::vector<std::vector<double>>& data_points);
 
