@@ -1,5 +1,6 @@
 #include <cmath>
 #include <complex>
+#include <cstddef>
 #include <iostream>
 #include <ctime>
 #include <unistd.h>
@@ -20,23 +21,23 @@ enum alg {LSSM = 0, HDSM = 1, ASM = 2};
 int main(int, char**) {
 
     bool trans = false;
-    double map_res = 0.025;
+    double map_res = 0.05;
 
     char algorithm = ASM;
     int max_guesses = 10;
     double threshold = 0.001;
 
     TextData scan_data;
-    if (!scan_data.read_from_file("../dat/test_11.txt")){
-        scan_data.read_from_file("dat/test_11.txt");
+    if (!scan_data.read_from_file("../dat/test_12.txt")){
+        scan_data.read_from_file("dat/test_12.txt");
     }
     //commentddddd
     TextData map_data;
-    if (!map_data.read_from_file("../dat/test_map.txt")){
-        map_data.read_from_file("dat/test_map.txt");
+    if (!map_data.read_from_file("../dat/map_clvn.txt")){
+        map_data.read_from_file("dat/map_clvn.txt");
     }
 
-    Transform2D las_transform(0.25,0.25,0);
+    Transform2D las_transform(10,10,1.2);
     Transform2D map_transform(0,0,0);
 
     clock_t start, end;
@@ -46,7 +47,7 @@ int main(int, char**) {
     std::vector<Point2D> las_vec = map_scan_points(las_transform, scan_data.dat_vec, 2*M_PI/360);
     std::vector<Point2D> pure_las_vec = las_vec;
 
-    std::vector<Point2D> map = make_map(map_data.dat_vec, 100, 100, map_res);
+    std::vector<Point2D> map = make_map(map_data.dat_vec, 384, 384, map_res);
 
     map_transform.transform(map);
 
@@ -75,6 +76,7 @@ int main(int, char**) {
         }
         
         corr_mean = corr_mean/correlations.size();
+        plot.add_corrs(correlations, SINGLE);
 
         for (int i = 0; i < correlations.size(); i++){
             corr_stdev += std::abs(correlations[i].corrected_value - corr_mean);
@@ -112,32 +114,45 @@ int main(int, char**) {
     double angle = std::atan2(total_transf.rot_mat[2],total_transf.rot_mat[0]);
     Transform2D rigid_transf(total_transf.trans_vec[0], total_transf.trans_vec[1], angle);
 
-    
+    plot.add_data(las_vec, rigid_transf);
 
-    //Make new correlations based on the rigid total transform
-    correlations.clear();
-    for (int i = 0; i < las_vec.size(); i++){
-        Correlation corr(map_kdt, las_vec[i], THOROUGH, rigid_transf);
-        correlations.push_back(corr);
+    //Get average orientation of good points' movement and distance
+    std::vector<double> avg_or = {0,0};
+    double avg_dist = 0;
+    for (int i = 0; i < sig_ind.size(); i++){
+        avg_dist += compare_transf(las_vec[sig_ind[i]], total_transf, rigid_transf);
+        std::vector<double> this_or = trans_transf(las_vec[sig_ind[i]], total_transf, rigid_transf);
+        avg_or[0] += this_or[0];
+        avg_or[1] += this_or[1];
     }
 
-    plot.add_data(las_vec, rigid_transf);
-    plot.add_corrs(correlations, SINGLE);
-    //If data points that were converged are now away from the corresponding map point, consider moving
+    avg_dist = avg_dist/sig_ind.size();
+
+    double avg_or_size = sqrt(avg_or[0]*avg_or[0] + avg_or[1]*avg_or[1]);
+    avg_or[0] = avg_or[0]/avg_or_size;
+    avg_or[1] = avg_or[1]/avg_or_size;
+
+    std::cout << "Avg vec is: [" << avg_or[0] << ", " << avg_or[1] << "] at a distance of " << avg_dist << "\n";
+
+    Transform2D avg_t(avg_or[0]*avg_dist, avg_or[1]*avg_dist, 0);
+
+    avg_t.add_transform(rigid_transf);
+
+    plot.add_data(las_vec, avg_t);
+
+/* 
+    //Figure out how much the good points have moved by
+    double max_dist = map_res;
     std::vector<double> sig_vec = {0,0};
-    int sig_count = 0;
-    double dist_score = 0;
     for (int i = 0; i < sig_ind.size(); i++){
-        if (correlations[i].get_distance() > map_res){
-            //Using an average right now, may need a max value in the future
-            sig_vec[0] += correlations[i].get_trans()[0];
-            sig_vec[1] += correlations[i].get_trans()[1];
-            sig_count++;
+        double dist = compare_transf(las_vec[sig_ind[i]], total_transf, rigid_transf);
+        if (dist > max_dist){
+            sig_vec = trans_transf(las_vec[sig_ind[i]], total_transf, rigid_transf);
+            max_dist = dist;
         }
     }
-    sig_vec[0] = sig_vec[0]/sig_count;
-    sig_vec[1] = sig_vec[1]/sig_count;
-    std::cout << "Sig vec is: [" << sig_vec[0] << ", " << sig_vec[1] << "]\n";
+
+    std::cout << "Max sig vec is: [" << sig_vec[0] << ", " << sig_vec[1] << "] at a distance of " << max_dist << "\n";
 
     //Use obtained sig vec as a maximum value for a bisection search
     double bisec = sqrt(sig_vec[0]*sig_vec[0] + sig_vec[1]*sig_vec[1]);
@@ -193,7 +208,7 @@ int main(int, char**) {
             break;
         }
     }
-    plot.add_data(las_vec, mid_t);
+    plot.add_data(las_vec, mid_t); */
 
     end = clock();
     double time_taken = double(end-start) / double(CLOCKS_PER_SEC);

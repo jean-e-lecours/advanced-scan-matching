@@ -100,7 +100,7 @@ bool Transform2D::is_significant(double threshold){
 }
 
 double Correlation::get_distance(){
-    return sqrt((scan.x - mcor1.x) * (scan.x - mcor1.x) + (scan.y - mcor1.y) * (scan.y - mcor1.y));
+    return norm[0]*(scan.x - mcor1.x) + norm[1]*(scan.y - mcor1.y);
 }
 
 std::vector<double> Correlation::get_trans(){
@@ -134,11 +134,29 @@ std::vector<Point2D> make_map(std::vector<double> map_vec, int grid_size_x, int 
         return map;
     }
     for (int i = 0; i < map_vec.size(); i++){
+        bool add_to_map = false;
         if (map_vec[i] > 0){
-            double point_x = pix_res * (i%grid_size_y);
-            double point_y = pix_res * (int)(i/grid_size_x);
-            Point2D map_point(point_x, point_y);
-            map.push_back(map_point);
+            int point_x = i%grid_size_x;
+            int point_y = i/grid_size_x;
+            if (point_x < grid_size_x && map_vec[i+1] == 0){
+                add_to_map = true;
+            }
+            else if (point_x > 0 && map_vec[i-1] == 0){
+                add_to_map = true;
+            }
+            else if (point_y < grid_size_y && map_vec[i + grid_size_x] == 0){
+                add_to_map = true;
+            }
+            else if (point_y > 0 && map_vec[i - grid_size_x] == 0){
+                add_to_map = true;
+            }
+            if (add_to_map) {
+                double dpx = pix_res * point_x;
+                double dpy = pix_res * point_y;
+                Point2D map_point(dpx, dpy);
+                map.push_back(map_point);
+            }
+            
         }
     }
     return map;
@@ -148,4 +166,24 @@ std::vector<Point2D> place_map_points(std::vector<int> map_vec){
     std::vector<Point2D> map;
 
     return map;
+}
+
+double compare_transf(Point2D point, Transform2D transf1, Transform2D transf2){
+    double temp_x1 = transf1.rot_mat[0] * point.x + transf1.rot_mat[1] * point.y + transf1.trans_vec[0];
+    double temp_y1 = transf2.rot_mat[2] * point.x + transf1.rot_mat[3] * point.y + transf1.trans_vec[1];
+
+    double temp_x2 = transf2.rot_mat[0] * point.x + transf2.rot_mat[1] * point.y + transf2.trans_vec[0];
+    double temp_y2 = transf2.rot_mat[2] * point.x + transf2.rot_mat[3] * point.y + transf2.trans_vec[1];
+
+    return std::sqrt((temp_x1-temp_x2)*(temp_x1-temp_x2) + (temp_y1-temp_y2)*(temp_y1-temp_y2));
+}
+
+std::vector<double> trans_transf(Point2D point, Transform2D transf1, Transform2D transf2){
+    double temp_x1 = transf1.rot_mat[0] * point.x + transf1.rot_mat[1] * point.y + transf1.trans_vec[0];
+    double temp_y1 = transf2.rot_mat[2] * point.x + transf1.rot_mat[3] * point.y + transf1.trans_vec[1];
+
+    double temp_x2 = transf2.rot_mat[0] * point.x + transf2.rot_mat[1] * point.y + transf2.trans_vec[0];
+    double temp_y2 = transf2.rot_mat[2] * point.x + transf2.rot_mat[3] * point.y + transf2.trans_vec[1];
+
+    return {temp_x1-temp_x2, temp_y1-temp_y2};
 }

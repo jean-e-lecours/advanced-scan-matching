@@ -48,4 +48,7 @@ class Correlation{
 std::vector<Point2D> map_scan_points(Transform2D& transform, std::vector<double> las_vec, double scan_period);
 
 std::vector<Point2D> make_map(std::vector<double> map_vec, int grid_size_x, int grid_size_y, double pix_res);
+
+double compare_transf(Point2D point, Transform2D transf1, Transform2D transf2);
+std::vector<double> trans_transf(Point2D point, Transform2D transf1, Transform2D transf2);
 #endif
